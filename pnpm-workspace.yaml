@@ -1,3 +1,9 @@
 ignoredBuiltDependencies:
+  - '@apollo/protobufjs'
+  - '@firebase/util'
+  - core-js
+  - core-js-pure
+  - parse-server
+  - protobufjs
   - sharp
   - unrs-resolver

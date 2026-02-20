@@ -9,7 +9,12 @@
     "lint": "eslint"
   },
   "dependencies": {
+    "cors": "^2.8.6",
+    "express": "^5.2.1",
     "next": "16.1.6",
+    "parse": "^8.1.0",
+    "parse-dashboard": "^8.5.0",
+    "parse-server": "^9.2.0",
     "react": "19.2.3",
     "react-dom": "19.2.3"
   },
