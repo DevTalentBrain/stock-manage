@@ -246,14 +246,18 @@ export default function UserSupport() {
                 ) : (
                   chatHistory.map((msg) => (
                     <div key={msg.id} className="space-y-4">
-                      <div className="flex justify-end">
-                        <div className="bg-[#1d1d1f] text-white px-6 py-4 rounded-[2rem] rounded-tr-none max-w-[80%] shadow-lg shadow-black/5">
-                          <p className="text-sm font-medium leading-relaxed">
-                            {msg.get("message")}
-                          </p>
+                      {/* 1. USER MESSAGE (Shows on the Right) */}
+                      {msg.get("message") && (
+                        <div className="flex justify-end">
+                          <div className="bg-[#1d1d1f] text-white px-6 py-4 rounded-[2rem] rounded-tr-none max-w-[80%] shadow-lg shadow-black/5">
+                            <p className="text-sm font-medium leading-relaxed">
+                              {msg.get("message")}
+                            </p>
+                          </div>
                         </div>
-                      </div>
+                      )}
 
+                      {/* 2. ADMIN REPLY (Shows on the Left) */}
                       {msg.get("adminReply") && (
                         <div className="flex justify-start animate-in slide-in-from-left duration-500">
                           <div className="bg-white text-black border border-gray-200 px-6 py-4 rounded-[2rem] rounded-tl-none max-w-[80%] shadow-sm">

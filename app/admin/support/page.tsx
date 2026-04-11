@@ -62,20 +62,36 @@ export default function AdminSupportPage() {
     if (!replyText.trim() || !selectedUser) return;
     setIsSending(true);
     try {
-      // Find the most recent message in the active thread to reply to
-      const threadMsgs = messages.filter(
-        (m) => (m.get("user")?.id || `guest_${m.id}`) === selectedUser,
-      );
-      const lastMsg = threadMsgs[0];
+      const SupportMessage = parseClient.Object.extend("SupportMessage");
+      const newReply = new SupportMessage();
 
-      if (lastMsg) {
-        lastMsg.set("adminReply", replyText);
-        lastMsg.set("status", "Replied");
-        await lastMsg.save();
-        setReplyText("");
-        fetchMessages();
+      // 1. Set the reply text
+      newReply.set("adminReply", replyText);
+
+      // 2. Link it to the user so it shows up in their chat
+      // We get the actual Pointer from the existing messages
+      const userPointer = messages
+        .find((m) => (m.get("user")?.id || `guest_${m.id}`) === selectedUser)
+        ?.get("user");
+
+      if (userPointer) {
+        newReply.set("user", userPointer);
       }
+
+      newReply.set("status", "Replied");
+
+      // 3. Set ACL so the user can see your reply
+      const acl = new parseClient.ACL();
+      acl.setPublicReadAccess(true);
+      acl.setPublicWriteAccess(true);
+      newReply.setACL(acl);
+
+      await newReply.save();
+
+      setReplyText("");
+      fetchMessages(); // Refresh to show the new message in the list
     } catch (error) {
+      console.error("Failed to send:", error);
       alert("Failed to send.");
     } finally {
       setIsSending(false);
@@ -162,13 +178,18 @@ export default function AdminSupportPage() {
                 >
                   {activeChat.map((msg) => (
                     <div key={msg.id} className="space-y-4">
-                      <div className="flex justify-start">
-                        <div className="bg-white border border-gray-200 text-black px-6 py-4 rounded-[2rem] rounded-tl-none max-w-[70%] shadow-sm">
-                          <p className="text-sm font-medium">
-                            {msg.get("message")}
-                          </p>
+                      {/* ONLY render User bubble if "message" exists and is not empty */}
+                      {msg.get("message") && (
+                        <div className="flex justify-start">
+                          <div className="bg-white border border-gray-200 text-black px-6 py-4 rounded-[2rem] rounded-tl-none max-w-[70%] shadow-sm">
+                            <p className="text-sm font-medium">
+                              {msg.get("message")}
+                            </p>
+                          </div>
                         </div>
-                      </div>
+                      )}
+
+                      {/* ONLY render Admin bubble if "adminReply" exists and is not empty */}
                       {msg.get("adminReply") && (
                         <div className="flex justify-end">
                           <div className="bg-[#1d1d1f] text-white px-6 py-4 rounded-[2rem] rounded-tr-none max-w-[70%] shadow-lg">
