@@ -13,17 +13,39 @@ const databaseURI = "mongodb://127.0.0.1:27017/stock-manage";
 const api = new ParseServer({
   databaseURI: databaseURI,
   appId: "stock-manage-app",
-  masterKey: "admin",
-  // Change localhost to 127.0.0.1 here
+  masterKey: "admin", // Change localhost to 127.0.0.1 here
   serverURL: "http://127.0.0.1:1337/parse",
   publicServerURL: "http://127.0.0.1:1337/parse",
+
+  masterKeyIps: ["0.0.0.0/0", "::/0", "127.0.0.1"], // Added '::1' for local IPv6
+  allowKeyOverrides: true,
+  allowClientClassCreation: true,
 
   fileUpload: {
     enableForPublic: true, // This replaces allowPublicFileUploads
     enableForAnonymousUser: true,
-  },
+  }, // ADD THIS SECTION TO UNLOCK EDITING
 
-  allowClientClassCreation: true,
+  schema: {
+    definitions: [
+      {
+        className: "Product",
+        fields: {
+          name: { type: "String" },
+          stock: { type: "Number" },
+          price: { type: "Number" },
+          image: { type: "File" },
+        },
+        classLevelPermissions: {
+          find: { "*": true }, // Public can see list
+          get: { "*": true }, // Public can see details
+          create: { "*": true }, // Public can add (for your admin dev)
+          update: { "*": true }, // Public can edit
+          delete: { "*": true }, // Public can remove
+        },
+      },
+    ],
+  },
 });
 
 const dashboard = new ParseDashboard(
