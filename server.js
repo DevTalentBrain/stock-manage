@@ -198,6 +198,10 @@ Parse.Cloud.define("dispatchStock", async (request) => {
     "itemImages",
     manifestData.map((d) => d.image),
   );
+  truck.set(
+    "itemQtys",
+    items.map((i) => i.qty),
+  );
   truck.set("eta", "45 mins");
   await truck.save(null, { useMasterKey });
 

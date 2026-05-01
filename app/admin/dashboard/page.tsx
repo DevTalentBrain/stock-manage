@@ -3,8 +3,16 @@ import { useEffect, useState, useRef } from "react";
 import parseClient from "@/lib/parse-client";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { useCities, CityProvider } from "@/lib/city-context";
 
-export default function AdminDashboard() {
+function DashboardContent() {
+  const {
+    cities,
+    loading: citiesLoading,
+    getStockForProduct,
+    refreshStock,
+    productStockMap,
+  } = useCities();
   const [isAdmin, setIsAdmin] = useState(false);
   const [products, setProducts] = useState<any[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
@@ -16,8 +24,6 @@ export default function AdminDashboard() {
     totalValue: 0,
     yearlyTotal: 0,
     items: 0,
-    kaunasUnits: 0,
-    vilniusUnits: 0,
     phoneUnits: 0,
     computerUnits: 0,
     lowStockCount: 0,
@@ -90,30 +96,30 @@ export default function AdminDashboard() {
         const prodResults = await new parseClient.Query(Product).find();
         setProducts(prodResults);
 
+        // Refresh stock data for all products
+        await refreshStock();
+
         let totalVal = 0,
-          kSum = 0,
-          vSum = 0,
           pSum = 0,
           cSum = 0,
           lowStock = 0;
 
         prodResults.forEach((p: any) => {
-          const k = Number(p.get("kaunas") || 0);
-          const v = Number(p.get("vilnius") || 0);
+          const stocks = getStockForProduct(p.id);
+          const totalStock = stocks.reduce((sum, s) => sum + s.stock, 0);
           const price = Number(p.get("price") || 0);
           const name = String(p.get("name") || "").toLowerCase();
 
-          kSum += k;
-          vSum += v;
-          totalVal += (k + v) * price;
-          if (name.includes("iphone") || name.includes("phone")) pSum += k + v;
+          totalVal += totalStock * price;
+          if (name.includes("iphone") || name.includes("phone"))
+            pSum += totalStock;
           else if (
             name.includes("mac") ||
             name.includes("laptop") ||
             name.includes("computer")
           )
-            cSum += k + v;
-          if (k + v < 10) lowStock++;
+            cSum += totalStock;
+          if (totalStock < 10) lowStock++;
         });
 
         const Order = parseClient.Object.extend("Order");
@@ -173,14 +179,15 @@ export default function AdminDashboard() {
           totalValue: totalVal,
           yearlyTotal: monthlyMap[monthNames[new Date().getMonth()]] || 0,
           items: prodResults.length,
-          kaunasUnits: kSum,
-          vilniusUnits: vSum,
           phoneUnits: pSum,
           computerUnits: cSum,
           lowStockCount: lowStock,
         });
         setMonthlyData(mChart);
         setYearlyData(yChart);
+
+        // Also fetch logistics data
+        await fetchLogistics();
       } catch (error) {
         console.error(error);
       }
@@ -191,8 +198,7 @@ export default function AdminDashboard() {
   // --- SMART FILTER LOGIC ---
   const filteredProducts = products.filter((p) => {
     const name = String(p.get("name") || "").toLowerCase();
-    const k = Number(p.get("kaunas") || 0);
-    const v = Number(p.get("vilnius") || 0);
+    const stocks = getStockForProduct(p.id);
 
     const nameMatch = name.includes(searchTerm.toLowerCase());
 
@@ -204,8 +210,13 @@ export default function AdminDashboard() {
     const catMatch = activeCategory === "all" || itemCat === activeCategory;
 
     let hubMatch = true;
-    if (activeHub === "kaunas") hubMatch = k > 0;
-    if (activeHub === "vilnius") hubMatch = v > 0;
+    if (activeHub !== "all") {
+      const city = cities.find((c) => c.id === activeHub);
+      if (city) {
+        const cityStock = stocks.find((s) => s.cityId === activeHub);
+        hubMatch = (cityStock?.stock || 0) > 0;
+      }
+    }
 
     return nameMatch && catMatch && hubMatch;
   });
@@ -249,9 +260,9 @@ export default function AdminDashboard() {
 
       // 1. Identify the destination from the items BEFORE we clear them
       const firstItemStatus = items[0]?.get("transitStatus") || "";
-      const destinationHub = firstItemStatus.includes("Vilnius")
-        ? "Vilnius Warehouse"
-        : "Kaunas Warehouse";
+      // Extract destination city name from transit status (e.g. "In Transit to Kaunas")
+      const destCityName = firstItemStatus.replace("In Transit to ", "").trim();
+      const destinationHub = `${destCityName} Warehouse`;
 
       // 2. CLOSE THE TRUCK RECORD
       const deliveryQuery = new parseClient.Query(Delivery);
@@ -434,8 +445,11 @@ export default function AdminDashboard() {
                     className="w-full bg-[#f5f5f7] border-none rounded-2xl px-6 py-4 text-xs font-bold outline-none cursor-pointer hover:bg-gray-100 transition-all appearance-none"
                   >
                     <option value="all">🌍 Global (All Hubs)</option>
-                    <option value="kaunas">🔵 Kaunas Hub</option>
-                    <option value="vilnius">🟢 Vilnius Hub</option>
+                    {cities.map((city) => (
+                      <option key={city.id} value={city.id}>
+                        {city.name} Hub
+                      </option>
+                    ))}
                   </select>
                 </div>
 
@@ -475,19 +489,21 @@ export default function AdminDashboard() {
                   <thead className="sticky top-0 bg-white z-10">
                     <tr className="text-[10px] font-black uppercase tracking-widest text-gray-400 border-b border-gray-50">
                       <th className="pb-4">Asset Name</th>
-                      {(activeHub === "all" || activeHub === "kaunas") && (
-                        <th className="pb-4">Kaunas</th>
-                      )}
-                      {(activeHub === "all" || activeHub === "vilnius") && (
-                        <th className="pb-4">Vilnius</th>
-                      )}
+                      {cities.map((city) => (
+                        <th key={city.id} className="pb-4">
+                          {city.name}
+                        </th>
+                      ))}
                       <th className="pb-4 text-right">Total</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-50">
                     {filteredProducts.map((p) => {
-                      const k = Number(p.get("kaunas") || 0);
-                      const v = Number(p.get("vilnius") || 0);
+                      const stocks = getStockForProduct(p.id);
+                      const totalStock = stocks.reduce(
+                        (sum, s) => sum + s.stock,
+                        0,
+                      );
                       return (
                         <tr
                           key={p.id}
@@ -496,18 +512,29 @@ export default function AdminDashboard() {
                           <td className="py-4 font-bold text-sm text-black">
                             {p.get("name")}
                           </td>
-                          {(activeHub === "all" || activeHub === "kaunas") && (
-                            <td className="py-4 text-sm font-bold text-blue-600">
-                              {k}
-                            </td>
-                          )}
-                          {(activeHub === "all" || activeHub === "vilnius") && (
-                            <td className="py-4 text-sm font-bold text-emerald-600">
-                              {v}
-                            </td>
-                          )}
+                          {cities.map((city) => {
+                            const cityStock = stocks.find(
+                              (s) => s.cityId === city.id,
+                            );
+                            return (
+                              <td
+                                key={city.id}
+                                className="py-4 text-sm font-bold"
+                                style={{
+                                  color:
+                                    city.color === "emerald"
+                                      ? "#059669"
+                                      : city.color === "blue"
+                                        ? "#2563eb"
+                                        : "#6366f1",
+                                }}
+                              >
+                                {cityStock?.stock || 0}
+                              </td>
+                            );
+                          })}
                           <td className="py-4 text-right font-black text-black">
-                            {k + v}
+                            {totalStock}
                           </td>
                         </tr>
                       );
@@ -546,7 +573,30 @@ export default function AdminDashboard() {
                 ),
               ) as [string, any[]][]
             ).map(([status, items], i) => {
-              const isToVilnius = status.toLowerCase().includes("vilnius");
+              // Find matching truck record to get origin/destination info
+              const truck = activeTrucks.find((t) => {
+                const dest = t.get("destination") || "";
+                return (
+                  status
+                    .toLowerCase()
+                    .includes(dest.toLowerCase().replace(" warehouse", "")) ||
+                  status.includes(t.get("toCityName") || "")
+                );
+              });
+              const origin =
+                truck?.get("origin")?.replace(" Hub", "") ||
+                status.replace("In Transit to ", "");
+              const destination =
+                truck?.get("destination")?.replace(" Warehouse", "") ||
+                status.replace("In Transit to ", "");
+              const originCode =
+                cities.find((c) =>
+                  origin.toLowerCase().includes(c.name.toLowerCase()),
+                )?.shortCode || origin.substring(0, 3).toUpperCase();
+              const destCode =
+                cities.find((c) =>
+                  destination.toLowerCase().includes(c.name.toLowerCase()),
+                )?.shortCode || destination.substring(0, 3).toUpperCase();
 
               return (
                 <div
@@ -560,7 +610,7 @@ export default function AdminDashboard() {
                     </div>
                     <div>
                       <p className="text-[10px] font-black text-orange-600 uppercase tracking-widest mb-2 flex items-center gap-2">
-                        Mixed Shipment ➔ {isToVilnius ? "Vilnius" : "Kaunas"}
+                        {origin} ➔ {destination}
                       </p>
                       <div className="flex flex-wrap gap-2">
                         {items.map((item: any, idx: number) => (
@@ -582,20 +632,14 @@ export default function AdminDashboard() {
 
                   {/* 2. PROGRESS BAR & ACTION */}
                   <div className="flex items-center gap-4 min-w-[200px]">
-                    <span
-                      className={`text-[9px] font-black ${!isToVilnius ? "text-blue-500" : "text-gray-300"}`}
-                    >
-                      KNS
+                    <span className="text-[9px] font-black text-blue-500">
+                      {originCode}
                     </span>
                     <div className="w-32 h-1 bg-gray-200 rounded-full relative overflow-hidden">
-                      <div
-                        className={`absolute top-0 bottom-0 bg-blue-500 transition-all duration-1000 ${isToVilnius ? "left-1/2 right-0" : "right-1/2 left-0"}`}
-                      ></div>
+                      <div className="absolute top-0 bottom-0 bg-blue-500 transition-all duration-1000 left-1/2 right-0"></div>
                     </div>
-                    <span
-                      className={`text-[9px] font-black ${isToVilnius ? "text-emerald-500" : "text-gray-300"}`}
-                    >
-                      VLN
+                    <span className="text-[9px] font-black text-emerald-500">
+                      {destCode}
                     </span>
                   </div>
 
@@ -713,5 +757,13 @@ export default function AdminDashboard() {
         </div>
       </div>
     </main>
+  );
+}
+
+export default function AdminDashboard() {
+  return (
+    <CityProvider>
+      <DashboardContent />
+    </CityProvider>
   );
 }

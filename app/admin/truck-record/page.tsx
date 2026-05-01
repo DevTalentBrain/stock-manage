@@ -69,43 +69,48 @@ export default function CargoHistoryPage() {
                   </td>
                 </tr>
               ) : (
-                transferLogs.map((log) => (
-                  <tr
-                    key={log.id}
-                    className="hover:bg-gray-50/30 transition-all group"
-                  >
-                    <td className="px-10 py-8">
-                      <p className="font-black text-sm uppercase tracking-tight flex items-center gap-2">
-                        <span className="text-xl">🚛</span>
-                        {log.get("origin")}{" "}
-                        <span className="text-blue-500">➔</span>{" "}
-                        {log.get("destination")}
-                      </p>
-                      <p className="text-[9px] font-mono text-gray-300 mt-1 uppercase">
-                        REF: {log.id}
-                      </p>
-                    </td>
+                transferLogs.map((log) => {
+                  const itemQtys = log.get("itemQtys") || [];
+                  const itemNames = log.get("itemNames") || [];
+                  const totalUnits =
+                    itemQtys.reduce((a: number, b: number) => a + b, 0) ||
+                    itemNames.length * 5;
 
-                    <td className="px-6 py-8">
-                      <div className="flex items-center gap-4">
-                        {/* --- IMAGE STACK --- */}
-                        <div className="flex -space-x-3 flex-shrink-0">
-                          {log
-                            .get("itemImages")
-                            ?.map((url: string, i: number) => (
-                              <img
-                                key={i}
-                                src={url}
-                                className="w-10 h-10 rounded-full border-2 border-white object-cover bg-gray-50 shadow-sm"
-                              />
-                            ))}
-                        </div>
+                  return (
+                    <tr
+                      key={log.id}
+                      className="hover:bg-gray-50/30 transition-all group"
+                    >
+                      <td className="px-10 py-8">
+                        <p className="font-black text-sm uppercase tracking-tight flex items-center gap-2">
+                          <span className="text-xl">🚛</span>
+                          {log.get("origin")}{" "}
+                          <span className="text-blue-500">➔</span>{" "}
+                          {log.get("destination")}
+                        </p>
+                        <p className="text-[9px] font-mono text-gray-300 mt-1 uppercase">
+                          REF: {log.id}
+                        </p>
+                      </td>
 
-                        {/* --- ITEM NAMES + STOCK QUANTITY --- */}
-                        <div className="flex flex-wrap gap-2 max-w-[300px]">
-                          {log
-                            .get("itemNames")
-                            ?.map((name: string, i: number) => (
+                      <td className="px-6 py-8">
+                        <div className="flex items-center gap-4">
+                          {/* --- IMAGE STACK --- */}
+                          <div className="flex -space-x-3 flex-shrink-0">
+                            {log
+                              .get("itemImages")
+                              ?.map((url: string, i: number) => (
+                                <img
+                                  key={i}
+                                  src={url}
+                                  className="w-10 h-10 rounded-full border-2 border-white object-cover bg-gray-50 shadow-sm"
+                                />
+                              ))}
+                          </div>
+
+                          {/* --- ITEM NAMES + STOCK QUANTITY --- */}
+                          <div className="flex flex-wrap gap-2 max-w-[300px]">
+                            {itemNames.map((name: string, i: number) => (
                               <div
                                 key={i}
                                 className="flex items-center gap-1 bg-gray-50 border border-gray-100 px-2 py-1 rounded-lg"
@@ -115,38 +120,42 @@ export default function CargoHistoryPage() {
                                 </span>
                                 {/* 🚩 UNIT STOCK BADGE */}
                                 <span className="text-[7px] font-black bg-black text-white px-1.5 py-0.5 rounded ml-1">
-                                  5 UNITS
+                                  {itemQtys[i] || 5} UNITS
                                 </span>
                               </div>
                             ))}
+                          </div>
                         </div>
-                      </div>
-                    </td>
+                      </td>
 
-                    <td className="px-6 py-8 text-center">
-                      <div className="inline-block bg-blue-50 px-4 py-1.5 rounded-full">
-                        <p className="text-[10px] font-black text-blue-600 uppercase tracking-widest">
-                          {log.get("cargoCount") * 5} Total Units
-                        </p>
-                        <p className="text-[7px] font-bold text-blue-300 uppercase text-center mt-0.5">
-                          {log.get("cargoCount")} Items
-                        </p>
-                      </div>
-                    </td>
+                      <td className="px-6 py-8 text-center">
+                        <div className="inline-block bg-blue-50 px-4 py-1.5 rounded-full">
+                          <p className="text-[10px] font-black text-blue-600 uppercase tracking-widest">
+                            {totalUnits} Total Units
+                          </p>
+                          <p className="text-[7px] font-bold text-blue-300 uppercase text-center mt-0.5">
+                            {itemNames.length} Items
+                          </p>
+                        </div>
+                      </td>
 
-                    <td className="px-10 py-8 text-right font-bold text-gray-400">
-                      <p className="text-gray-800 text-xs">
-                        {new Date(log.get("updatedAt")).toLocaleDateString()}
-                      </p>
-                      <p className="text-[9px] font-medium opacity-50 uppercase">
-                        {new Date(log.get("updatedAt")).toLocaleTimeString([], {
-                          hour: "2-digit",
-                          minute: "2-digit",
-                        })}
-                      </p>
-                    </td>
-                  </tr>
-                ))
+                      <td className="px-10 py-8 text-right font-bold text-gray-400">
+                        <p className="text-gray-800 text-xs">
+                          {new Date(log.get("updatedAt")).toLocaleDateString()}
+                        </p>
+                        <p className="text-[9px] font-medium opacity-50 uppercase">
+                          {new Date(log.get("updatedAt")).toLocaleTimeString(
+                            [],
+                            {
+                              hour: "2-digit",
+                              minute: "2-digit",
+                            },
+                          )}
+                        </p>
+                      </td>
+                    </tr>
+                  );
+                })
               )}
             </tbody>
           </table>
