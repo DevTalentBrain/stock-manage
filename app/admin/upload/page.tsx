@@ -2,11 +2,17 @@
 import { useEffect, useState } from "react";
 import parseClient from "@/lib/parse-client";
 import Link from "next/link";
+import { useCities, CityProvider } from "@/lib/city-context";
 
-export default function AdminPage() {
+function UploadContent() {
+  const {
+    cities,
+    loading: citiesLoading,
+    refreshStock,
+    getStockForProduct,
+  } = useCities();
   const [file, setFile] = useState<File | null>(null);
   const [name, setName] = useState("");
-  // 🚩 NEW: Category State
   const [category, setCategory] = useState("Phone");
 
   const [editId, setEditId] = useState<string | null>(null);
@@ -14,8 +20,10 @@ export default function AdminPage() {
   const [products, setProducts] = useState<any[]>([]);
   const [orderCount, setOrderCount] = useState(0);
 
-  const [stockKaunas, setStockKaunas] = useState<string | number>("0");
-  const [stockVilnius, setStockVilnius] = useState<string | number>("0");
+  // Dynamic stock by city: { [cityId]: number | string }
+  const [stockByCity, setStockByCity] = useState<
+    Record<string, number | string>
+  >({});
   const [price, setPrice] = useState<string | number>("0");
   const [searchTerm, setSearchTerm] = useState("");
 
@@ -31,6 +39,8 @@ export default function AdminPage() {
       const oQuery = new parseClient.Query(Order);
       const count = await oQuery.count();
       setOrderCount(count);
+
+      await refreshStock();
     } catch (error: any) {
       console.error("Fetch error:", error);
     }
@@ -40,18 +50,17 @@ export default function AdminPage() {
     fetchData();
   }, []);
 
+  // Calculate stats using dynamic city stock
   const totalItems = products.length;
-  const totalStock = products.reduce(
-    (sum, p) => sum + (p.get("kaunas") || 0) + (p.get("vilnius") || 0),
-    0,
-  );
-  const totalValue = products.reduce(
-    (sum, p) =>
-      sum +
-      ((p.get("kaunas") || 0) + (p.get("vilnius") || 0)) *
-        (p.get("price") || 0),
-    0,
-  );
+  const totalStock = products.reduce((sum, p) => {
+    const stocks = getStockForProduct(p.id);
+    return sum + stocks.reduce((s, st) => s + st.stock, 0);
+  }, 0);
+  const totalValue = products.reduce((sum, p) => {
+    const stocks = getStockForProduct(p.id);
+    const total = stocks.reduce((s, st) => s + st.stock, 0);
+    return sum + total * (p.get("price") || 0);
+  }, 0);
 
   const handleSave = async () => {
     if (!name) return alert("Please provide a name!");
@@ -69,10 +78,8 @@ export default function AdminPage() {
       }
 
       p.set("name", name);
-      p.set("category", category); // 🚩 SAVING CATEGORY TO DB
+      p.set("category", category);
       p.set("price", Math.max(0, Number(price) || 0));
-      p.set("kaunas", Math.max(0, Number(stockKaunas) || 0));
-      p.set("vilnius", Math.max(0, Number(stockVilnius) || 0));
 
       if (file) {
         const parseFile = new parseClient.File(file.name, file);
@@ -81,6 +88,44 @@ export default function AdminPage() {
       }
 
       await p.save();
+
+      // Save CityStock entries for each city that has a value
+      const CityStock = parseClient.Object.extend("CityStock");
+      for (const cityId of Object.keys(stockByCity)) {
+        const rawValue = stockByCity[cityId];
+        const safeValue =
+          typeof rawValue === "string" && rawValue === ""
+            ? 0
+            : Number(rawValue) || 0;
+
+        const productPtr = {
+          __type: "Pointer",
+          className: "Product",
+          objectId: p.id,
+        };
+        const cityPtr = {
+          __type: "Pointer",
+          className: "City",
+          objectId: cityId,
+        };
+
+        const query = new parseClient.Query(CityStock);
+        query.equalTo("product", productPtr);
+        query.equalTo("city", cityPtr);
+        const existing = await query.first();
+
+        if (existing) {
+          existing.set("stock", safeValue);
+          await existing.save();
+        } else {
+          const entry = new CityStock();
+          entry.set("product", productPtr);
+          entry.set("city", cityPtr);
+          entry.set("stock", safeValue);
+          await entry.save();
+        }
+      }
+
       alert(editId ? "✅ Warehouse Updated!" : "✅ Item Deployed!");
       resetForm();
       fetchData();
@@ -94,27 +139,53 @@ export default function AdminPage() {
   const resetForm = () => {
     setEditId(null);
     setName("");
-    setCategory("Phone"); // Reset category
-    setStockKaunas("0");
-    setStockVilnius("0");
+    setCategory("Phone");
+    setStockByCity({});
     setPrice("0");
     setFile(null);
   };
 
-  const startEdit = (product: any) => {
+  const startEdit = async (product: any) => {
     setEditId(product.id);
     setName(product.get("name") ?? "");
-    setCategory(product.get("category") ?? "Phone"); // Load category for edit
-    setStockKaunas(product.get("kaunas") ?? 0);
-    setStockVilnius(product.get("vilnius") ?? 0);
+    setCategory(product.get("category") ?? "Phone");
     setPrice(product.get("price") ?? 0);
+
+    // Load stock from CityStock entries
+    const stocks = getStockForProduct(product.id);
+    const stockMap: Record<string, number | string> = {};
+    for (const s of stocks) {
+      stockMap[s.cityId] = s.stock;
+    }
+    setStockByCity(stockMap);
+
     window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
+  const handleStockChange = (cityId: string, value: string) => {
+    setStockByCity((prev) => ({
+      ...prev,
+      [cityId]: value,
+    }));
+  };
+
+  const getStockDisplay = (cityId: string): number | string => {
+    if (stockByCity[cityId] !== undefined) return stockByCity[cityId];
+    return 0;
   };
 
   const filteredProducts = products.filter((p) => {
     const name = (p.get("name") || "").toLowerCase();
     return name.includes(searchTerm.toLowerCase());
   });
+
+  if (citiesLoading) {
+    return (
+      <div className="min-h-screen bg-[#fbfbfd] flex items-center justify-center">
+        <div className="w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-[#fbfbfd] text-[#1d1d1f] p-4 md:p-10 antialiased font-sans">
@@ -128,7 +199,7 @@ export default function AdminPage() {
             href="/admin/dashboard"
             className="text-[10px] font-black bg-white border px-6 py-2 rounded-full shadow-sm hover:bg-gray-50 transition-all uppercase tracking-widest"
           >
-            ← Dashbaord
+            ← Dashboard
           </Link>
         </header>
 
@@ -181,7 +252,7 @@ export default function AdminPage() {
                   />
                 </div>
 
-                {/* 🚩 NEW: CATEGORY DROPDOWN */}
+                {/* CATEGORY DROPDOWN */}
                 <div>
                   <label className="text-[9px] uppercase font-black text-gray-500 mb-2 block tracking-widest">
                     Classification
@@ -200,29 +271,37 @@ export default function AdminPage() {
                   </select>
                 </div>
 
+                {/* Dynamic City Stock Inputs */}
                 <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="text-[9px] uppercase font-black text-blue-400 mb-2 block tracking-widest">
-                      Kaunas Stock
-                    </label>
-                    <input
-                      type="text"
-                      value={stockKaunas}
-                      onChange={(e) => setStockKaunas(e.target.value)}
-                      className="w-full bg-white/5 rounded-xl p-3 outline-none"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-[9px] uppercase font-black text-emerald-400 mb-2 block tracking-widest">
-                      Vilnius Stock
-                    </label>
-                    <input
-                      type="text"
-                      value={stockVilnius}
-                      onChange={(e) => setStockVilnius(e.target.value)}
-                      className="w-full bg-white/5 rounded-xl p-3 outline-none"
-                    />
-                  </div>
+                  {cities.map((city) => {
+                    const cityColorMap: Record<string, string> = {
+                      blue: "text-blue-400",
+                      emerald: "text-emerald-400",
+                      purple: "text-purple-400",
+                      orange: "text-orange-400",
+                      red: "text-red-400",
+                      pink: "text-pink-400",
+                      indigo: "text-indigo-400",
+                      teal: "text-teal-400",
+                    };
+                    return (
+                      <div key={city.id}>
+                        <label
+                          className={`text-[9px] uppercase font-black mb-2 block tracking-widest ${cityColorMap[city.color] || "text-gray-400"}`}
+                        >
+                          {city.name} Stock
+                        </label>
+                        <input
+                          type="text"
+                          value={getStockDisplay(city.id)}
+                          onChange={(e) =>
+                            handleStockChange(city.id, e.target.value)
+                          }
+                          className="w-full bg-white/5 rounded-xl p-3 outline-none"
+                        />
+                      </div>
+                    );
+                  })}
                 </div>
 
                 <div>
@@ -297,8 +376,7 @@ export default function AdminPage() {
                   </thead>
                   <tbody className="divide-y divide-gray-50">
                     {filteredProducts.map((p) => {
-                      const kStock = p.get("kaunas") || 0;
-                      const vStock = p.get("vilnius") || 0;
+                      const stocks = getStockForProduct(p.id);
                       return (
                         <tr
                           key={p.id}
@@ -329,12 +407,32 @@ export default function AdminPage() {
                           </td>
                           <td className="px-6 py-5">
                             <div className="flex flex-col gap-1">
-                              <span className="text-[9px] font-black text-blue-500 uppercase">
-                                KNS: {kStock}
-                              </span>
-                              <span className="text-[9px] font-black text-emerald-500 uppercase">
-                                VIL: {vStock}
-                              </span>
+                              {stocks.length > 0 ? (
+                                stocks.map((s) => {
+                                  const cityColorMap: Record<string, string> = {
+                                    blue: "text-blue-500",
+                                    emerald: "text-emerald-500",
+                                    purple: "text-purple-500",
+                                    orange: "text-orange-500",
+                                    red: "text-red-500",
+                                    pink: "text-pink-500",
+                                    indigo: "text-indigo-500",
+                                    teal: "text-teal-500",
+                                  };
+                                  return (
+                                    <span
+                                      key={s.cityId}
+                                      className={`text-[9px] font-black uppercase ${cityColorMap[s.cityColor] || "text-gray-500"}`}
+                                    >
+                                      {s.cityShortCode}: {s.stock}
+                                    </span>
+                                  );
+                                })
+                              ) : (
+                                <span className="text-[9px] font-black text-gray-300 uppercase">
+                                  No stock data
+                                </span>
+                              )}
                             </div>
                           </td>
                           <td className="px-8 py-5 text-right">
@@ -369,5 +467,13 @@ export default function AdminPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+export default function UploadPage() {
+  return (
+    <CityProvider>
+      <UploadContent />
+    </CityProvider>
   );
 }

@@ -304,6 +304,12 @@ export default function AdminDashboard() {
       color: "bg-blue-500",
     },
     {
+      name: "Cities",
+      path: "/admin/cities",
+      icon: "🏙️",
+      color: "bg-teal-500",
+    },
+    {
       name: "History",
       path: "/admin/history",
       icon: "📜",
