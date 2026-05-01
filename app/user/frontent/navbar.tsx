@@ -1,6 +1,8 @@
 "use client";
 import { usePathname } from "next/navigation";
 import Link from "next/link";
+import { useEffect, useState } from "react";
+import parseClient from "@/lib/parse-client";
 
 interface NavbarProps {
   cartCount: number;
@@ -16,11 +18,56 @@ export default function Navbar({
   onLogout,
 }: NavbarProps) {
   const pathname = usePathname();
+  const [notifCount, setNotifCount] = useState(0);
+
+  // --- NOTIFICATION DOT LOGIC ---
+  useEffect(() => {
+    let subscription: any;
+
+    const fetchNotifications = async () => {
+      if (!user) {
+        setNotifCount(0);
+        return;
+      }
+
+      try {
+        const Order = parseClient.Object.extend("Order");
+        const query = new parseClient.Query(Order);
+        query.equalTo("user", user);
+        // Only count what's new/updated but not yet "read" (In Transit)
+        query.containedIn("status", ["Approved", "Dispatched"]);
+
+        const count = await query.count();
+        setNotifCount(count);
+
+        // --- SETUP LIVE QUERY ---
+        // This listens for changes while the user is on the page
+        subscription = await query.subscribe();
+
+        subscription.on("create", () => {
+          setNotifCount((prev) => prev + 1);
+        });
+
+        subscription.on("update", (object: any) => {
+          // If status changed to something else (like "Delivered"), we refresh the count
+          fetchNotifications();
+        });
+      } catch (error) {
+        console.error("Failed to sync notifications:", error);
+      }
+    };
+
+    fetchNotifications();
+
+    // Optional: Refresh the count every 30 seconds
+    const interval = setInterval(fetchNotifications, 30000);
+    return () => clearInterval(interval);
+  }, [user, pathname]);
 
   const navLinks = [
-    { name: "Home", href: "/home" },
-    { name: "Store", href: "/frontent" },
-    { name: "Support", href: "/support" },
+    { name: "Home", href: "/user/home" },
+    { name: "Store", href: "/user/frontent" },
+    { name: "Support", href: "/user/support" },
   ];
 
   return (
@@ -28,7 +75,7 @@ export default function Navbar({
       <div className="max-w-5xl mx-auto px-1 flex items-center h-12">
         <div className="flex items-center gap-10 h-full">
           <span className="text-lg font-bold tracking-tighter">
-            iPhone<span className="font-light text-gray-400">Store</span>
+            Cargo<span className="font-light text-gray-400">Goo</span>
           </span>
 
           {/* Navigation Links */}
@@ -86,20 +133,34 @@ export default function Navbar({
             )}
           </button>
 
-          {/* Conditional Profile/Login Section */}
+          {/* Profile Section */}
           <div className="flex items-center gap-4 border-l border-white/10 pl-4">
             {user ? (
               <div className="flex items-center gap-3">
-                <Link
-                  href="/profile"
-                  className={`text-[10px] uppercase font-black px-2 py-1 rounded-md transition-all ${
-                    pathname === "/profile"
-                      ? "bg-white text-black"
-                      : "text-gray-400 hover:text-white"
-                  }`}
-                >
-                  My Profile
-                </Link>
+                <div className="relative">
+                  <Link
+                    href="/user/profile"
+                    onClick={() => setNotifCount(0)}
+                    className={`text-[10px] uppercase font-black px-2 py-1 rounded-md transition-all ${
+                      pathname === "/profile"
+                        ? "bg-white text-black"
+                        : "text-gray-400 hover:text-white"
+                    }`}
+                  >
+                    My Profile
+                  </Link>
+
+                  {/* 🚩 THE RED NOTIFICATION DOT */}
+                  {notifCount > 0 && (
+                    <span className="absolute -top-2 -right-2 flex h-5 w-5">
+                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+                      <span className="relative inline-flex rounded-full h-5 w-5 bg-red-600 border border-[#1d1d1f] text-[9px] font-black items-center justify-center">
+                        {notifCount}
+                      </span>
+                    </span>
+                  )}
+                </div>
+
                 <div className="flex items-center gap-2">
                   <div className="w-6 h-6 bg-gradient-to-tr from-gray-400 to-gray-600 rounded-full flex items-center justify-center text-[10px] font-bold uppercase shadow-sm">
                     {user.get("username")?.[0]}
@@ -118,13 +179,13 @@ export default function Navbar({
             ) : (
               <div className="flex items-center gap-4">
                 <Link
-                  href="/login"
+                  href="/user/login"
                   className="text-[11px] font-bold text-gray-300 hover:text-white"
                 >
                   Login
                 </Link>
                 <Link
-                  href="/register"
+                  href="/user/register"
                   className="text-[11px] font-bold bg-white text-black px-4 py-1.5 rounded-full hover:bg-gray-200 transition-all"
                 >
                   Sign Up

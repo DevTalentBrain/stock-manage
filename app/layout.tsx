@@ -13,7 +13,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Stockholder Management System",
+  title: "Inventory Management System",
   description:
     "A secure platform for corporate transparency and shareholder equity management.",
 };
