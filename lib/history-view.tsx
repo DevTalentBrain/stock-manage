@@ -221,8 +221,7 @@ export default function HistoryView({ dashboardHref }: HistoryViewProps) {
                 <thead className="bg-gray-50 border-b border-gray-100 sticky top-0 z-20">
                   <tr className="text-[10px] uppercase font-black text-gray-400 tracking-widest">
                     <th className="px-10 py-6">Date / Registry</th>
-                    <th className="px-6 py-6">Products</th>
-                    <th className="px-6 py-6">Warehouse Source</th>
+                    <th className="px-6 py-6">Products & Quantities</th>
                     <th className="px-6 py-6">User</th>
                     <th className="px-6 py-6 text-right">Total Amount</th>
                     <th className="px-10 py-6 text-right">Verification</th>
@@ -253,35 +252,34 @@ export default function HistoryView({ dashboardHref }: HistoryViewProps) {
                           </p>
                         </td>
 
-                        {/* 2. PRODUCT VISUALS */}
+                        {/* 2. PRODUCTS & QUANTITIES */}
                         <td className="px-6 py-6">
-                          <div className="flex -space-x-6 group-hover:space-x-1 transition-all duration-500 ease-in-out">
-                            {order
-                              .get("itemImages")
-                              ?.slice(0, 4)
-                              .map((url: string, i: number) => (
-                                <img
-                                  key={i}
-                                  src={url}
-                                  className="h-14 w-14 rounded-2xl ring-4 ring-white bg-white object-contain p-1.5 border border-gray-100 shadow-sm hover:scale-110 hover:z-30 transition-all cursor-pointer"
-                                  alt="product"
-                                />
-                              ))}
-                            {order.get("itemImages")?.length > 4 && (
-                              <div className="h-14 w-14 rounded-2xl bg-gray-900 flex items-center justify-center text-[10px] text-white font-black ring-4 ring-white">
-                                +{order.get("itemImages").length - 4}
-                              </div>
-                            )}
+                          <div className="flex flex-wrap gap-2 max-w-[280px]">
+                            {(() => {
+                              const summary = order.get("itemSummary") || "";
+                              const parts = summary.split(", ").filter(Boolean);
+                              return parts.map((part: string, idx: number) => {
+                                const match = part.match(/^(.+?)\s*x(\d+)$/);
+                                const name = match
+                                  ? match[1].trim()
+                                  : part.trim();
+                                const qty = match ? parseInt(match[2], 10) : 1;
+                                return (
+                                  <div
+                                    key={idx}
+                                    className="flex items-center gap-1 bg-gray-50 border border-gray-100 px-2 py-1 rounded-lg"
+                                  >
+                                    <span className="text-[7px] font-black text-gray-400 uppercase tracking-widest">
+                                      {name}
+                                    </span>
+                                    <span className="text-[7px] font-black bg-black text-white px-1.5 py-0.5 rounded ml-1">
+                                      x{qty}
+                                    </span>
+                                  </div>
+                                );
+                              });
+                            })()}
                           </div>
-                        </td>
-
-                        {/* 3. WAREHOUSE SOURCE BADGE */}
-                        <td className="px-6 py-6">
-                          <span
-                            className={`text-[9px] font-black px-4 py-1.5 rounded-lg border uppercase tracking-wider ${city.style}`}
-                          >
-                            {city.label}
-                          </span>
                         </td>
 
                         {/* 4. STOCKHOLDER */}
