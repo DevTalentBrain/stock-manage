@@ -13,6 +13,8 @@ export default function ManagementMasterChat() {
   const [isSending, setIsSending] = useState(false);
   const [adminNotifications, setAdminNotifications] = useState(0);
   const [supportNotifications, setSupportNotifications] = useState(0);
+  const [allUsers, setAllUsers] = useState<any[]>([]);
+  const [showNewConv, setShowNewConv] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   const formatDateTime = (date?: Date) => {
@@ -73,6 +75,19 @@ export default function ManagementMasterChat() {
     }
   };
 
+  // 🚩 Fetch all registered users for "New Conversation"
+  const fetchAllUsers = async () => {
+    try {
+      const User = parseClient.Object.extend("User");
+      const query = new parseClient.Query(User);
+      query.limit(1000);
+      const results = await query.find();
+      setAllUsers(results);
+    } catch (err) {
+      console.error("Error fetching users:", err);
+    }
+  };
+
   useEffect(() => {
     // 🚩 Only update timestamp when viewing the support tab
     // (Admin sync badge is handled by isManagerRead flag on InternalChat)
@@ -82,6 +97,7 @@ export default function ManagementMasterChat() {
 
     fetchData();
     fetchNotificationCounts();
+    if (activeTab === "support") fetchAllUsers();
     const interval = setInterval(() => {
       fetchData();
       fetchNotificationCounts();
@@ -216,9 +232,17 @@ export default function ManagementMasterChat() {
           {/* SIDEBAR WITH NEW MESSAGE BADGES */}
           {activeTab === "support" && (
             <div className="w-80 bg-white rounded-[2.5rem] border border-gray-100 p-4 overflow-y-auto space-y-2 no-scrollbar">
-              <h3 className="text-[9px] font-black !text-gray-400 uppercase p-4 tracking-widest">
-                Inquiry Threads
-              </h3>
+              <div className="flex items-center justify-between px-4 pt-2 pb-1">
+                <h3 className="text-[9px] font-black !text-gray-400 uppercase tracking-widest">
+                  Inquiry Threads
+                </h3>
+                <button
+                  onClick={() => setShowNewConv(true)}
+                  className="text-[9px] font-black bg-indigo-600 text-white px-4 py-2 rounded-full uppercase tracking-widest hover:bg-black transition-all shadow-md"
+                >
+                  ✉️ New
+                </button>
+              </div>
               {supportUsers.map(({ userObj, hasPending }) => (
                 <div
                   key={userObj.id}
@@ -240,6 +264,64 @@ export default function ManagementMasterChat() {
                   </p>
                 </div>
               ))}
+
+              {/* NEW CONVERSATION MODAL */}
+              {showNewConv && (
+                <div className="fixed inset-0 bg-black/80 backdrop-blur-md z-[100] flex items-center justify-center p-6">
+                  <div className="bg-[#1c1c1e] w-full max-w-md rounded-[3rem] p-8 shadow-2xl text-white border border-white/5 animate-in zoom-in duration-200">
+                    <h2 className="text-2xl font-black uppercase tracking-tight mb-1">
+                      New Conversation
+                    </h2>
+                    <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-6">
+                      Select a user to message
+                    </p>
+                    <div className="space-y-2 max-h-[400px] overflow-y-auto">
+                      {allUsers
+                        .filter(
+                          (u) =>
+                            u.id !== parseClient.User.current()?.id &&
+                            !supportUsers.some((s) => s.userObj.id === u.id),
+                        )
+                        .map((user) => (
+                          <div
+                            key={user.id}
+                            onClick={() => {
+                              setSelectedUser(user);
+                              setShowNewConv(false);
+                            }}
+                            className="flex items-center gap-4 p-4 rounded-2xl bg-white/5 border border-white/10 cursor-pointer hover:bg-indigo-600 hover:border-indigo-500 transition-all"
+                          >
+                            <div className="w-10 h-10 rounded-full bg-indigo-600 flex items-center justify-center text-sm font-black">
+                              {user.get("username")?.charAt(0).toUpperCase() ||
+                                "?"}
+                            </div>
+                            <div>
+                              <p className="font-bold text-sm">
+                                {user.get("username") || "Unknown"}
+                              </p>
+                              <p className="text-[9px] text-gray-400 font-bold">
+                                {user.get("email") || "No email"}
+                              </p>
+                            </div>
+                          </div>
+                        ))}
+                      {allUsers.filter(
+                        (u) => !supportUsers.some((s) => s.userObj.id === u.id),
+                      ).length === 0 && (
+                        <p className="text-center text-gray-500 text-xs font-bold py-10">
+                          All users already have threads
+                        </p>
+                      )}
+                    </div>
+                    <button
+                      onClick={() => setShowNewConv(false)}
+                      className="w-full mt-6 bg-white text-black py-4 rounded-full font-black uppercase text-[10px] tracking-widest hover:bg-gray-200 transition-all"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           )}
 
