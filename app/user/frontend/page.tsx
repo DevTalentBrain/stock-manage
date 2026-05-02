@@ -130,6 +130,8 @@ function FrontendContent() {
 
   /**
    * Distribute a desired quantity across available cities intelligently.
+   * Always allocates the full desiredQty — excess goes to the first city
+   * so stockAllocations captures the complete order for dispatch deduction.
    * Returns an array of { city, cityId, qty } allocations.
    */
   const distributeAcrossCities = (
@@ -140,6 +142,7 @@ function FrontendContent() {
     const allocations: { city: string; cityId: string; qty: number }[] = [];
     let remainingToAllocate = desiredQty;
 
+    // First pass: take what's available from each city
     for (const stock of stocks) {
       if (remainingToAllocate <= 0) break;
       const available = stock.stock;
@@ -151,6 +154,16 @@ function FrontendContent() {
         qty: take,
       });
       remainingToAllocate -= take;
+    }
+
+    // Second pass: if still remaining, allocate excess to the first city
+    // (so stockAllocations captures the full qty for dispatch deduction)
+    if (remainingToAllocate > 0 && stocks.length > 0) {
+      allocations.push({
+        city: stocks[0].cityName,
+        cityId: stocks[0].cityId,
+        qty: remainingToAllocate,
+      });
     }
 
     return allocations;
@@ -342,9 +355,19 @@ function FrontendContent() {
       order.set("total", totalAmount);
       order.set("status", "Pending Approval");
       order.set("user", currentUser);
+      // 🚩 Store the full allocation data for later stock deduction at dispatch
+      const stockAllocations = cart.flatMap((item: any) =>
+        item.allocations.map((a: any) => ({
+          productId: item.product.id,
+          cityId: a.cityId,
+          city: a.city,
+          qty: a.qty,
+        })),
+      );
       order.set("itemSummary", summary || "");
       order.set("itemImages", images || []);
       order.set("cities", uniqueCities);
+      order.set("stockAllocations", stockAllocations);
 
       const savedOrder = await order.save();
 
@@ -367,40 +390,6 @@ function FrontendContent() {
       delivery.set("itemImages", images);
 
       await delivery.save();
-
-      // 4. STOCK SYNC - Use CityStock class instead of flat product fields
-      for (const item of cart) {
-        for (const alloc of item.allocations) {
-          try {
-            const product = item.product;
-            const cityId = alloc.cityId;
-
-            // Find the CityStock entry for this product + city
-            const CityStock = parseClient.Object.extend("CityStock");
-            const ProductRef = parseClient.Object.extend("Product");
-            const CityRef = parseClient.Object.extend("City");
-
-            const productPtr = ProductRef.createWithoutData(product.id);
-            const cityPtr = CityRef.createWithoutData(cityId);
-
-            const query = new parseClient.Query(CityStock);
-            query.equalTo("product", productPtr);
-            query.equalTo("city", cityPtr);
-            const stockEntry = await query.first();
-
-            if (stockEntry) {
-              const currentStock = stockEntry.get("stock") || 0;
-              stockEntry.set("stock", Math.max(0, currentStock - alloc.qty));
-              await stockEntry.save();
-            }
-          } catch (err) {
-            console.warn(
-              "Stock update failed (check CityStock CLP permissions):",
-              err,
-            );
-          }
-        }
-      }
 
       // 🚩 MOVE THESE ABOVE THE ALERT
       // This ensures the Modal/UI closes immediately even if the alert box stays open

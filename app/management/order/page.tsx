@@ -58,7 +58,35 @@ export default function OrderManager() {
       const OrderQuery = new parseClient.Query("Order");
       const actualOrder = await OrderQuery.get(orderId);
 
-      // 2. Fetch or Prepare the Delivery Manifest
+      // 2. Deduct stock from CityStock using stored allocations
+      const stockAllocations = actualOrder.get("stockAllocations");
+      if (Array.isArray(stockAllocations) && stockAllocations.length > 0) {
+        const CityStock = parseClient.Object.extend("CityStock");
+        const ProductRef = parseClient.Object.extend("Product");
+        const CityRef = parseClient.Object.extend("City");
+
+        for (const alloc of stockAllocations) {
+          try {
+            const productPtr = ProductRef.createWithoutData(alloc.productId);
+            const cityPtr = CityRef.createWithoutData(alloc.cityId);
+
+            const query = new parseClient.Query(CityStock);
+            query.equalTo("product", productPtr);
+            query.equalTo("city", cityPtr);
+            const stockEntry = await query.first();
+
+            if (stockEntry) {
+              const currentStock = stockEntry.get("stock") || 0;
+              stockEntry.set("stock", Math.max(0, currentStock - alloc.qty));
+              await stockEntry.save();
+            }
+          } catch (err) {
+            console.warn("Stock deduction failed for allocation:", alloc, err);
+          }
+        }
+      }
+
+      // 3. Fetch or Prepare the Delivery Manifest
       const deliveryQuery = new parseClient.Query("Deliveries");
       deliveryQuery.equalTo("order", actualOrder);
       const existingDelivery = await deliveryQuery.first();
