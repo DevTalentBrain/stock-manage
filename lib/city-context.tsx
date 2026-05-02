@@ -25,7 +25,7 @@ interface CityContextType {
   loading: boolean;
   refreshCities: () => Promise<void>;
   getStockForProduct: (productId: string) => CityStock[];
-  refreshStock: (productId?: string) => Promise<void>;
+  refreshStock: (productId?: string) => Promise<Record<string, CityStock[]>>;
   productStockMap: Record<string, CityStock[]>;
 }
 
@@ -34,7 +34,7 @@ const CityContext = createContext<CityContextType>({
   loading: true,
   refreshCities: async () => {},
   getStockForProduct: () => [],
-  refreshStock: async () => {},
+  refreshStock: async () => ({}),
   productStockMap: {},
 });
 
@@ -102,8 +102,11 @@ export function CityProvider({ children }: { children: React.ReactNode }) {
       } else {
         setProductStockMap(map);
       }
+
+      return map; // Return the map for direct use (avoids stale state issues)
     } catch (error) {
       console.error("Error fetching stock:", error);
+      return {};
     }
   };
 

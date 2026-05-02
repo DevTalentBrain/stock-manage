@@ -96,8 +96,9 @@ function DashboardContent() {
         const prodResults = await new parseClient.Query(Product).find();
         setProducts(prodResults);
 
-        // Refresh stock data for all products
-        await refreshStock();
+        // Refresh stock data for all products and use the returned map directly
+        // (avoids stale React state issue where setState hasn't taken effect yet)
+        const stockMap = await refreshStock();
 
         let totalVal = 0,
           pSum = 0,
@@ -105,7 +106,7 @@ function DashboardContent() {
           lowStock = 0;
 
         prodResults.forEach((p: any) => {
-          const stocks = getStockForProduct(p.id);
+          const stocks = stockMap[p.id] || [];
           const totalStock = stocks.reduce((sum, s) => sum + s.stock, 0);
           const price = Number(p.get("price") || 0);
           const name = String(p.get("name") || "").toLowerCase();
@@ -175,9 +176,15 @@ function DashboardContent() {
           });
         }
 
+        // Sum all months in the current year for Total Revenue
+        const yearlyRevenue = (Object.values(monthlyMap) as number[]).reduce(
+          (sum, v) => sum + v,
+          0,
+        );
+
         setStats({
           totalValue: totalVal,
-          yearlyTotal: monthlyMap[monthNames[new Date().getMonth()]] || 0,
+          yearlyTotal: yearlyRevenue,
           items: prodResults.length,
           phoneUnits: pSum,
           computerUnits: cSum,
@@ -255,42 +262,20 @@ function DashboardContent() {
     setUploading(true);
 
     try {
-      const Product = parseClient.Object.extend("Product");
-      const Delivery = parseClient.Object.extend("Deliveries");
-
       // 1. Identify the destination from the items BEFORE we clear them
       const firstItemStatus = items[0]?.get("transitStatus") || "";
       // Extract destination city name from transit status (e.g. "In Transit to Kaunas")
       const destCityName = firstItemStatus.replace("In Transit to ", "").trim();
       const destinationHub = `${destCityName} Warehouse`;
 
-      // 2. CLOSE THE TRUCK RECORD
-      const deliveryQuery = new parseClient.Query(Delivery);
-      deliveryQuery.equalTo("status", "In Transit");
-      deliveryQuery.equalTo("destination", destinationHub);
-      deliveryQuery.descending("createdAt");
-
-      const truckRecord = await deliveryQuery.first();
-      if (truckRecord) {
-        truckRecord.set("status", "Delivered");
-        truckRecord.set("arrivedAt", new Date().toISOString());
-        await truckRecord.save();
-      }
-
-      // 🚩 3. MARK PRODUCTS AS DELIVERED WITH TIMESTAMP
-      const productPromises = items.map(async (item) => {
-        const query = new parseClient.Query(Product);
-        const freshProduct = await query.get(item.id);
-
-        // Clear transitStatus so item disappears from Active Fleet Manifest
-        // Record deliveryDate as actual ISO timestamp in the database
-        freshProduct.set("transitStatus", "");
-        freshProduct.set("deliveryDate", new Date().toISOString());
-
-        return freshProduct.save();
+      // 🚩 2. MARK PRODUCTS AS DELIVERED & CLOSE TRUCK RECORD (via cloud function with master key)
+      const result = await parseClient.Cloud.run("confirmArrival", {
+        productIds: items.map((item) => item.id),
+        destinationHub,
+        destCityName,
       });
 
-      await Promise.all(productPromises);
+      console.log(`Arrival confirmed: ${result.updatedCount} products updated`);
 
       alert(
         `✅ SUCCESS: Arrival confirmed at ${destinationHub}. Inventory flags cleared.`,

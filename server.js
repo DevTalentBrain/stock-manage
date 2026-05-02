@@ -18,7 +18,6 @@ const api = new ParseServer({
   publicServerURL: "http://127.0.0.1:1337/parse",
 
   masterKeyIps: ["0.0.0.0/0", "::/0", "127.0.0.1"], // Added '::1' for local IPv6
-  allowKeyOverrides: true,
   allowClientClassCreation: true,
 
   fileUpload: {
@@ -206,6 +205,56 @@ Parse.Cloud.define("dispatchStock", async (request) => {
   await truck.save(null, { useMasterKey });
 
   return { success: true };
+});
+
+// Cloud Function: Confirm arrival of products at destination
+Parse.Cloud.define("confirmArrival", async (request) => {
+  const { productIds, destinationHub, destCityName } = request.params;
+
+  if (!productIds || !destinationHub) {
+    throw new Parse.Error(
+      Parse.Error.INVALID_PARAMS,
+      "Missing required parameters: productIds, destinationHub",
+    );
+  }
+
+  const Product = Parse.Object.extend("Product");
+  const Delivery = Parse.Object.extend("Deliveries");
+
+  // 1. Close the truck record
+  const deliveryQuery = new Parse.Query(Delivery);
+  deliveryQuery.equalTo("status", "In Transit");
+  deliveryQuery.equalTo("destination", destinationHub);
+  deliveryQuery.descending("createdAt");
+
+  const truckRecord = await deliveryQuery.first({ useMasterKey: true });
+  if (truckRecord) {
+    truckRecord.set("status", "Delivered");
+    truckRecord.set("arrivedAt", new Date().toISOString());
+    await truckRecord.save(null, { useMasterKey: true });
+  }
+
+  // 2. Mark products as delivered (skip any that no longer exist)
+  let updatedCount = 0;
+  for (const productId of productIds) {
+    try {
+      const prodQuery = new Parse.Query(Product);
+      const freshProduct = await prodQuery.get(productId, {
+        useMasterKey: true,
+      });
+
+      freshProduct.set("transitStatus", "");
+      freshProduct.set("deliveryDate", new Date().toISOString());
+      await freshProduct.save(null, { useMasterKey: true });
+      updatedCount++;
+    } catch (err) {
+      console.warn(
+        `Product ${productId} not found or could not be updated, skipping.`,
+      );
+    }
+  }
+
+  return { success: true, updatedCount };
 });
 
 // Explicitly start the Parse API before mounting
