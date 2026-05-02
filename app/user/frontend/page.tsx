@@ -1,8 +1,8 @@
 "use client";
 import { useEffect, useState } from "react";
 import parseClient from "@/lib/parse-client";
-import Navbar from "@/app/user/frontent/navbar";
-import BagSidebar from "@/app/user/frontent/bag-sidebar";
+import Navbar from "@/app/user/frontend/navbar";
+import BagSidebar from "@/app/user/frontend/bag-sidebar";
 
 export default function Home() {
   // --- APPLICATION STATES ---

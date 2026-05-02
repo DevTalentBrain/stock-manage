@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useState, useRef } from "react";
 import parseClient from "@/lib/parse-client";
-import Navbar from "@/app/user/frontent/navbar";
+import Navbar from "@/app/user/frontend/navbar";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 
@@ -93,7 +93,7 @@ export default function MainPage() {
                 assets with professional cargo handling.
               </p>
               <button
-                onClick={() => router.push("/frontent")}
+                onClick={() => router.push("/frontend")}
                 className="bg-white text-black px-12 py-5 rounded-full font-black uppercase text-[11px] w-fit hover:bg-indigo-600 hover:text-white transition-all shadow-2xl active:scale-95"
               >
                 Dispatch Cargo Order
@@ -193,7 +193,7 @@ export default function MainPage() {
                   </p>
                 </div>
                 <button
-                  onClick={() => router.push("/frontent")}
+                  onClick={() => router.push("/frontend")}
                   className="bg-black text-white h-14 px-8 rounded-full font-black uppercase text-[10px] tracking-widest hover:bg-indigo-600 transition-all"
                 >
                   Order Bulk

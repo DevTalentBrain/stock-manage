@@ -2,7 +2,7 @@
 import { useEffect, useState, useRef } from "react";
 import parseClient from "@/lib/parse-client";
 import Link from "next/link";
-import Navbar from "@/app/user/frontent/navbar";
+import Navbar from "@/app/user/frontend/navbar";
 
 export default function UserSupport() {
   const [currentUser, setCurrentUser] = useState<any>(null);

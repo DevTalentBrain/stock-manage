@@ -28,7 +28,7 @@ export default function Login() {
         return;
       }
 
-      window.location.href = "/user/frontent";
+      window.location.href = "/user/frontend";
     } catch (err: any) {
       setError("Invalid credentials.");
       setLoading(false); // Stop loading so they can try again
