@@ -19,20 +19,29 @@ Parse.Cloud.beforeSave(tables.ORDER, async (request) => {
     );
   }
 
-  // If new object, set the user pointer
   if (!object.existed()) {
+    // New object: set the user pointer and create ACL with owner + admin/manager roles
     object.set("user", user);
-  }
 
-  // Set ACL: owner can read/write, admin and manager roles can read/write
-  const acl = new Parse.ACL();
-  acl.setReadAccess(user.id, true);
-  acl.setWriteAccess(user.id, true);
-  acl.setRoleReadAccess(roles.ADMIN, true);
-  acl.setRoleWriteAccess(roles.ADMIN, true);
-  acl.setRoleReadAccess(roles.MANAGER, true);
-  acl.setRoleWriteAccess(roles.MANAGER, true);
-  object.setACL(acl);
+    const acl = new Parse.ACL();
+    acl.setReadAccess(user.id, true);
+    acl.setWriteAccess(user.id, true);
+    acl.setRoleReadAccess(roles.ADMIN, true);
+    acl.setRoleWriteAccess(roles.ADMIN, true);
+    acl.setRoleReadAccess(roles.MANAGER, true);
+    acl.setRoleWriteAccess(roles.MANAGER, true);
+    object.setACL(acl);
+  } else {
+    // Existing object: preserve the existing ACL, just ensure admin/manager roles are present
+    const existingAcl = object.getACL();
+    if (existingAcl) {
+      existingAcl.setRoleReadAccess(roles.ADMIN, true);
+      existingAcl.setRoleWriteAccess(roles.ADMIN, true);
+      existingAcl.setRoleReadAccess(roles.MANAGER, true);
+      existingAcl.setRoleWriteAccess(roles.MANAGER, true);
+      object.setACL(existingAcl);
+    }
+  }
 });
 
 /**
@@ -53,21 +62,37 @@ Parse.Cloud.beforeSave(tables.SUPPORT_MESSAGE, async (request) => {
   }
 
   if (!object.existed()) {
-    object.set("user", user);
-  }
+    // New object: only set the user pointer if not already set (manager may set it to a customer)
+    if (!object.get("user")) {
+      object.set("user", user);
+    }
 
-  const acl = new Parse.ACL();
-  acl.setReadAccess(user.id, true);
-  acl.setWriteAccess(user.id, true);
-  acl.setRoleReadAccess(roles.ADMIN, true);
-  acl.setRoleWriteAccess(roles.ADMIN, true);
-  acl.setRoleReadAccess(roles.MANAGER, true);
-  acl.setRoleWriteAccess(roles.MANAGER, true);
-  object.setACL(acl);
+    const acl = new Parse.ACL();
+    // If the user pointer was set to a customer, give that customer read/write access
+    const targetUser = object.get("user") || user;
+    acl.setReadAccess(targetUser.id, true);
+    acl.setWriteAccess(targetUser.id, true);
+    acl.setRoleReadAccess(roles.ADMIN, true);
+    acl.setRoleWriteAccess(roles.ADMIN, true);
+    acl.setRoleReadAccess(roles.MANAGER, true);
+    acl.setRoleWriteAccess(roles.MANAGER, true);
+    object.setACL(acl);
+  } else {
+    // Existing object: preserve the existing ACL, just ensure admin/manager roles are present
+    const existingAcl = object.getACL();
+    if (existingAcl) {
+      existingAcl.setRoleReadAccess(roles.ADMIN, true);
+      existingAcl.setRoleWriteAccess(roles.ADMIN, true);
+      existingAcl.setRoleReadAccess(roles.MANAGER, true);
+      existingAcl.setRoleWriteAccess(roles.MANAGER, true);
+      object.setACL(existingAcl);
+    }
+  }
 });
 
 /**
  * beforeSave hook for InternalChat:
+
  * - Only admin and manager roles can create
  * - Sets ACL for admin and manager roles
  */

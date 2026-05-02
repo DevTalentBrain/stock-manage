@@ -107,8 +107,8 @@ const api = new ParseServer({
           cities: { type: "Array" },
         },
         classLevelPermissions: {
-          find: { "role:admin": true, "role:manager": true },
-          get: { "role:admin": true, "role:manager": true },
+          find: { "*": true },
+          get: { "*": true },
           create: { "*": true },
           update: { "role:admin": true, "role:manager": true },
           delete: { "role:admin": true },
