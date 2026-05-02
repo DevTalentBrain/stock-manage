@@ -255,7 +255,7 @@ export default function ProfilePage() {
         <div className="fixed inset-0 bg-black/80 backdrop-blur-md z-[100] flex items-center justify-center p-6">
           <div className="bg-[#1c1c1e] w-full max-w-lg rounded-[3rem] p-12 shadow-2xl text-white border border-white/5 animate-in zoom-in duration-200">
             <h2 className="text-3xl font-black uppercase tracking-tight mb-8">
-              Order Logistics
+              Order Details
             </h2>
 
             <div className="space-y-4">

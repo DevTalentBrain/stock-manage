@@ -252,10 +252,10 @@ export default function Home() {
 
       <section className="bg-black text-white py-20 px-6 text-center">
         <h1 className="text-5xl font-black tracking-tighter mb-4 italic text-white">
-          CARGO REGISTRY
+          PRODUCT REGISTRY
         </h1>
         <p className="text-gray-400 font-bold uppercase text-[10px] tracking-[0.4em]">
-          Multi-Hub Inventory Management
+          Inventory Management
         </p>
       </section>
 

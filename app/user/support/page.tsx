@@ -180,17 +180,17 @@ export default function UserSupport() {
           <div className="lg:col-span-1 space-y-6">
             <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-gray-100">
               <h3 className="text-[10px] font-black uppercase text-indigo-600 mb-6 tracking-[0.2em]">
-                Regional Hubs
+                Support Channels
               </h3>
               <div className="space-y-4">
-                {["Kaunas Warehouse", "Vilnius Warehouse"].map((hub) => (
+                {["Email Support", "Phone Support"].map((hub) => (
                   <div
                     key={hub}
                     className="flex justify-between items-center text-sm font-bold border-b border-gray-50 pb-3 last:border-0"
                   >
                     <span className="text-gray-600">{hub}</span>
                     <span className="text-green-500 text-[9px] font-black uppercase">
-                      Online
+                      Active
                     </span>
                   </div>
                 ))}
@@ -293,7 +293,7 @@ export default function UserSupport() {
                   Restricted Access
                 </h3>
                 <p className="text-gray-400 text-xs font-bold uppercase mt-3 mb-10 tracking-widest max-w-xs leading-relaxed">
-                  Please authenticate to view your secure logistics inquiries.
+                  Please authenticate to view your support inquiries.
                 </p>
                 <Link
                   href="/user/login"
