@@ -2,10 +2,26 @@
 import { useEffect, useState } from "react";
 import parseClient from "@/lib/parse-client";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 
-export default function CargoHistoryPage() {
+export default function ManagementCargoHistoryPage() {
   const [transferLogs, setTransferLogs] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [authorized, setAuthorized] = useState(false);
+  const router = useRouter();
+
+  useEffect(() => {
+    const user = parseClient.User.current();
+    if (
+      !user ||
+      (user.get("role") !== "manager" && user.get("username") !== "manager")
+    ) {
+      router.push("/management/login");
+    } else {
+      setAuthorized(true);
+      fetchTransferLogs();
+    }
+  }, [router]);
 
   const fetchTransferLogs = async () => {
     try {
@@ -24,9 +40,13 @@ export default function CargoHistoryPage() {
     }
   };
 
-  useEffect(() => {
-    fetchTransferLogs();
-  }, []);
+  if (!authorized) {
+    return (
+      <div className="min-h-screen bg-[#f5f5f7] flex items-center justify-center">
+        <div className="w-8 h-8 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin"></div>
+      </div>
+    );
+  }
 
   return (
     <main className="min-h-screen bg-[#f5f5f7] p-8 md:p-16 font-sans text-black antialiased">
@@ -41,7 +61,7 @@ export default function CargoHistoryPage() {
             </p>
           </div>
           <Link
-            href="/admin/dashboard"
+            href="/management/dashboard"
             className="text-[10px] font-black bg-white border border-black px-8 py-3 rounded-full hover:bg-black hover:text-white transition-all uppercase tracking-widest shadow-sm"
           >
             ← Back to Dashboard

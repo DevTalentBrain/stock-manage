@@ -35,14 +35,13 @@ function FrontendContent() {
   const [shippingPhone, setShippingPhone] = useState("");
   const [deliveryAddress, setDeliveryAddress] = useState("");
 
-  // --- PAYMENT CODE ---
-  const [paymentCode] = useState(
-    () =>
-      "CARGO-" +
-      Math.random().toString(36).substring(2, 6).toUpperCase() +
-      "-" +
-      Math.random().toString(36).substring(2, 6).toUpperCase(),
-  );
+  // --- ORDER NUMBER (generated once, used as payment code + saved to DB) ---
+  const [orderNumber] = useState(() => {
+    const now = new Date();
+    const dateStr = now.toISOString().slice(0, 10).replace(/-/g, "");
+    const rand = Math.random().toString(36).substring(2, 6).toUpperCase();
+    return `ORD-${dateStr}-${rand}`;
+  });
 
   // --- DYNAMIC CITIES & STOCK ---
   const { cities, getStockForProduct, refreshStock, productStockMap } =
@@ -335,6 +334,7 @@ function FrontendContent() {
         ),
       );
       // Standard Fields
+      order.set("orderNumber", orderNumber);
       order.set("recipientName", shippingName);
       order.set("phone", shippingPhone);
       order.set("address", deliveryAddress);
@@ -351,16 +351,6 @@ function FrontendContent() {
       // 3. CREATE DELIVERY LINK
       const Deliveries = parseClient.Object.extend("Deliveries");
       const delivery = new Deliveries();
-      const firstItem = cart[0]?.product;
-      let detectedOrigin = "Kaunas Hub"; // Default fallback
-
-      if (firstItem) {
-        // Use the first cart item's first allocation city as the origin
-        const firstAlloc = cart[0]?.allocations[0];
-        if (firstAlloc) {
-          detectedOrigin = `${firstAlloc.city} Hub`;
-        }
-      }
 
       // Managers need write access to approve/dispatch
       const deliveryAcl = new parseClient.ACL();
@@ -368,10 +358,8 @@ function FrontendContent() {
       deliveryAcl.setPublicWriteAccess(true);
       delivery.setACL(deliveryAcl);
 
-      delivery.set("orderId", savedOrder.id);
+      delivery.set("order", savedOrder);
       delivery.set("status", "Pending Approval");
-      delivery.set("destination", deliveryAddress);
-      delivery.set("origin", detectedOrigin);
       delivery.set("cargoCount", totalQty);
       delivery.set("totalValue", totalAmount);
       delivery.set("recipient", shippingName);
@@ -657,7 +645,7 @@ function FrontendContent() {
                     Your Payment Code
                   </p>
                   <p className="text-2xl font-black tracking-wider text-indigo-600 select-all">
-                    {paymentCode}
+                    {orderNumber}
                   </p>
                 </div>
 

@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import parseClient from "@/lib/parse-client";
+import { printInvoice } from "@/lib/invoice";
 import Link from "next/link";
 
 export default function ProfilePage() {
@@ -59,13 +60,28 @@ export default function ProfilePage() {
 
     try {
       const DeliveryQuery = new parseClient.Query("Deliveries");
-      DeliveryQuery.equalTo("orderId", order.id);
+      DeliveryQuery.equalTo("order", order);
       const delivery = await DeliveryQuery.first();
       if (delivery) {
         setTrackingInfo(delivery);
       }
     } catch (error) {
       console.error("Tracking Error:", error);
+    }
+  };
+
+  // 🚩 NEW: Customer confirms receipt
+  const handleConfirmReceived = async () => {
+    if (!selectedOrder) return;
+    try {
+      await parseClient.Cloud.run("confirmReceived", {
+        orderId: selectedOrder.id,
+      });
+      alert("✅ Order marked as Complete. Thank you!");
+      setSelectedOrder(null);
+      fetchMyHistory(); // Refresh the list
+    } catch (error: any) {
+      alert("❌ Error: " + error.message);
     }
   };
 
@@ -92,6 +108,12 @@ export default function ProfilePage() {
     }
   };
 
+  // 🚩 PRINT INVOICE HANDLER (uses shared utility)
+  const handlePrintInvoice = () => {
+    const trackingNumber = trackingInfo?.get("trackingNumber") || "";
+    printInvoice(selectedOrder, trackingNumber);
+  };
+
   const totalSpent = myOrders.reduce(
     (sum, order) => sum + (order.get("total") || 0),
     0,
@@ -100,21 +122,8 @@ export default function ProfilePage() {
   useEffect(() => {
     const markNotificationsAsRead = async () => {
       if (!user) return;
-
       try {
-        const Order = parseClient.Object.extend("Order");
-        const query = new parseClient.Query(Order);
-        query.equalTo("user", user);
-        // Find orders that were triggering the notification
-        query.containedIn("status", ["Approved", "Dispatched"]);
-
-        const unreadOrders = await query.find();
-
-        // Change status so they don't show up in the Navbar count anymore
-        for (const order of unreadOrders) {
-          order.set("status", "In Transit");
-          await order.save();
-        }
+        await parseClient.Cloud.run("clearNotifications");
       } catch (error) {
         console.error("Could not clear notifications:", error);
       }
@@ -209,30 +218,98 @@ export default function ProfilePage() {
             <h2 className="text-[10px] font-black uppercase tracking-[0.2em] text-gray-400 mb-6 pl-4">
               Transaction History
             </h2>
-            {myOrders.map((order) => (
-              <div
-                key={order.id}
-                onClick={() => viewOrderDetails(order)}
-                className="bg-white rounded-[2rem] p-6 border border-gray-100 flex items-center justify-between group hover:border-blue-600 transition-all cursor-pointer shadow-sm"
-              >
-                <div className="flex items-center gap-6">
-                  <span className="text-2xl">
-                    {order.get("status") === "Dispatched" ? "📦" : "🚛"}
-                  </span>
-                  <div>
-                    <p className="text-[10px] font-black uppercase text-blue-600 mb-1">
-                      Order #{order.id.slice(-5).toUpperCase()}
-                    </p>
-                    <p className="text-xs font-bold text-gray-500 italic truncate max-w-[200px]">
-                      {order.get("itemSummary")}
+            {myOrders.map((order) => {
+              const status = order.get("status");
+              return (
+                <div
+                  key={order.id}
+                  className="bg-white rounded-[2rem] p-6 border border-gray-100 shadow-sm hover:border-blue-600 transition-all"
+                >
+                  <div className="flex items-center justify-between mb-4">
+                    <div className="flex items-center gap-6">
+                      <span className="text-2xl">
+                        {status === "Complete"
+                          ? "✅"
+                          : status === "Dispatched"
+                            ? "📦"
+                            : "🚛"}
+                      </span>
+                      <div>
+                        <p className="text-[10px] font-black uppercase text-blue-600 mb-1">
+                          {order.get("orderNumber")
+                            ? `Order #${order.get("orderNumber")}`
+                            : `Order #${order.id.slice(-5).toUpperCase()}`}
+                        </p>
+                        <p className="text-xs font-bold text-gray-500 italic truncate max-w-[200px]">
+                          {order.get("itemSummary")}
+                        </p>
+                      </div>
+                    </div>
+                    <p className="text-xl font-black text-gray-900 tracking-tighter">
+                      ${(order.get("total") || 0).toLocaleString()}
                     </p>
                   </div>
+
+                  {/* --- ACTION BUTTONS --- */}
+                  <div className="flex gap-3 mt-2">
+                    {/* CONFIRM DELIVERY — big green button for Dispatched orders */}
+                    {status === "Dispatched" && (
+                      <button
+                        onClick={async (e) => {
+                          e.stopPropagation();
+                          try {
+                            await parseClient.Cloud.run("confirmReceived", {
+                              orderId: order.id,
+                            });
+                            alert("✅ Delivery confirmed! Thank you.");
+                            fetchMyHistory();
+                          } catch (err: any) {
+                            alert("❌ Error: " + err.message);
+                          }
+                        }}
+                        className="flex-1 bg-emerald-500 text-white py-4 rounded-full font-black uppercase text-[10px] tracking-widest hover:bg-emerald-600 transition-all shadow-lg shadow-emerald-500/30 active:scale-95 border-2 border-emerald-400"
+                      >
+                        ✅ Confirm Delivery
+                      </button>
+                    )}
+
+                    {/* PRINT RECEIPT — for Approved, Dispatched, or Complete orders */}
+                    {status !== "Pending Approval" && (
+                      <button
+                        onClick={async (e) => {
+                          e.stopPropagation();
+                          try {
+                            const DeliveryQuery = new parseClient.Query(
+                              "Deliveries",
+                            );
+                            DeliveryQuery.equalTo("order", order);
+                            const delivery = await DeliveryQuery.first();
+                            const trackingNumber =
+                              delivery?.get("trackingNumber") || "";
+                            const { printInvoice } =
+                              await import("@/lib/invoice");
+                            printInvoice(order, trackingNumber);
+                          } catch (err) {
+                            console.error("Print error:", err);
+                          }
+                        }}
+                        className="bg-blue-600 text-white py-4 px-6 rounded-full font-black uppercase text-[10px] tracking-widest hover:bg-blue-700 transition-all shadow-lg active:scale-95"
+                      >
+                        🖨️ Receipt
+                      </button>
+                    )}
+
+                    {/* VIEW DETAILS */}
+                    <button
+                      onClick={() => viewOrderDetails(order)}
+                      className="bg-gray-100 text-gray-800 py-4 px-6 rounded-full font-black uppercase text-[10px] tracking-widest hover:bg-gray-200 transition-all active:scale-95"
+                    >
+                      Details
+                    </button>
+                  </div>
                 </div>
-                <p className="text-xl font-black text-gray-900 tracking-tighter">
-                  ${(order.get("total") || 0).toLocaleString()}
-                </p>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       </div>
@@ -241,9 +318,14 @@ export default function ProfilePage() {
       {selectedOrder && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-md z-[100] flex items-center justify-center p-6">
           <div className="bg-[#1c1c1e] w-full max-w-lg rounded-[3rem] p-12 shadow-2xl text-white border border-white/5 animate-in zoom-in duration-200">
-            <h2 className="text-3xl font-black uppercase tracking-tight mb-8">
+            <h2 className="text-3xl font-black uppercase tracking-tight mb-2">
               Order Details
             </h2>
+            <p className="text-[10px] font-black text-blue-400 uppercase tracking-widest mb-8">
+              {selectedOrder.get("orderNumber")
+                ? `#${selectedOrder.get("orderNumber")}`
+                : `#${selectedOrder.id.slice(-5).toUpperCase()}`}
+            </p>
 
             <div className="space-y-4">
               {/* Tracking ID Section (If dispatched) */}
@@ -276,22 +358,49 @@ export default function ProfilePage() {
                 </p>
                 <p
                   className={`text-[10px] font-black uppercase px-4 py-1 rounded-full border ${
-                    selectedOrder.get("status") === "Dispatched"
-                      ? "border-green-500 text-green-500 bg-green-500/10"
-                      : "border-blue-500 text-blue-500 bg-blue-500/10"
+                    selectedOrder.get("status") === "Complete"
+                      ? "border-emerald-500 text-emerald-500 bg-emerald-500/10"
+                      : selectedOrder.get("status") === "Dispatched"
+                        ? "border-green-500 text-green-500 bg-green-500/10"
+                        : "border-blue-500 text-blue-500 bg-blue-500/10"
                   }`}
                 >
-                  {selectedOrder.get("status") || "PENDING"}
+                  {selectedOrder.get("status") === "Pending Approval"
+                    ? "Pending Confirmation"
+                    : selectedOrder.get("status") === "Approved"
+                      ? "Payment Complete"
+                      : selectedOrder.get("status") || "PENDING"}
                 </p>
               </div>
             </div>
 
-            <button
-              onClick={() => setSelectedOrder(null)}
-              className="w-full mt-10 bg-white text-black py-6 rounded-full font-black uppercase text-[11px] tracking-[0.3em] hover:bg-blue-600 hover:text-white transition-all shadow-xl active:scale-95"
-            >
-              Close Manifest
-            </button>
+            <div className="flex gap-4 mt-10">
+              {/* 🚩 CONFIRM RECEIVED BUTTON — only when Dispatched */}
+              {selectedOrder.get("status") === "Dispatched" && (
+                <button
+                  onClick={handleConfirmReceived}
+                  className="flex-1 bg-emerald-500 text-white py-6 rounded-full font-black uppercase text-[10px] tracking-[0.2em] hover:bg-emerald-600 transition-all shadow-xl shadow-emerald-500/30 active:scale-95 border-2 border-emerald-400"
+                >
+                  ✅ Confirm Received
+                </button>
+              )}
+
+              {selectedOrder.get("status") !== "Pending Approval" &&
+                selectedOrder.get("status") !== "Complete" && (
+                  <button
+                    onClick={handlePrintInvoice}
+                    className="flex-1 bg-blue-600 text-white py-6 rounded-full font-black uppercase text-[10px] tracking-[0.2em] hover:bg-blue-700 transition-all shadow-xl active:scale-95"
+                  >
+                    Print Invoice
+                  </button>
+                )}
+              <button
+                onClick={() => setSelectedOrder(null)}
+                className={`${selectedOrder.get("status") !== "Pending Approval" ? "flex-1" : "w-full"} bg-white text-black py-6 rounded-full font-black uppercase text-[11px] tracking-[0.3em] hover:bg-blue-600 hover:text-white transition-all shadow-xl active:scale-95`}
+              >
+                Close Manifest
+              </button>
+            </div>
           </div>
         </div>
       )}

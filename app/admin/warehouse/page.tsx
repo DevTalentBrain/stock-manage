@@ -20,6 +20,10 @@ function WarehouseContent() {
   const [destCityId, setDestCityId] = useState<string>("");
   // Per-item transfer quantities: { [productId]: string }
   const [transferQtys, setTransferQtys] = useState<Record<string, string>>({});
+  // Set of product names that have active "In Transit" cargo
+  const [pendingDeliveryNames, setPendingDeliveryNames] = useState<Set<string>>(
+    new Set(),
+  );
 
   // Local stock edits: { [productId]: { [cityId]: number } }
   const [localStockEdits, setLocalStockEdits] = useState<
@@ -29,6 +33,23 @@ function WarehouseContent() {
   useEffect(() => {
     fetchInventory();
   }, []);
+
+  async function fetchPendingDeliveries() {
+    try {
+      const Cargo = parseClient.Object.extend("Cargo");
+      const query = new parseClient.Query(Cargo);
+      query.equalTo("status", "In Transit");
+      const results = await query.find();
+      const names = new Set<string>();
+      results.forEach((cargo) => {
+        const itemNames = cargo.get("itemNames") || [];
+        itemNames.forEach((name: string) => names.add(name));
+      });
+      setPendingDeliveryNames(names);
+    } catch (error) {
+      console.error("Pending deliveries fetch error:", error);
+    }
+  }
 
   async function fetchInventory() {
     try {
@@ -42,6 +63,8 @@ function WarehouseContent() {
       setTransferQtys({});
       // Refresh stock for all products
       await refreshStock();
+      // Fetch pending deliveries
+      await fetchPendingDeliveries();
     } catch (error) {
       console.error("Warehouse fetch error:", error);
     } finally {
@@ -367,7 +390,6 @@ function WarehouseContent() {
             </thead>
             <tbody className="divide-y divide-gray-50">
               {inventory.map((item) => {
-                const transit = item.get("transitStatus");
                 const imageUrl = item.get("image")
                   ? item.get("image").url()
                   : null;
@@ -405,10 +427,10 @@ function WarehouseContent() {
                           <p className="font-black text-sm text-[#1d1d1f] uppercase tracking-tight">
                             {item.get("name")}
                           </p>
-                          {transit && (
-                            <p className="text-[8px] text-orange-600 font-black uppercase mt-1 animate-pulse tracking-widest">
-                              🚚 {transit}
-                            </p>
+                          {pendingDeliveryNames.has(item.get("name")) && (
+                            <span className="inline-flex items-center gap-1 mt-1 text-[8px] font-black bg-orange-100 text-orange-700 px-2 py-0.5 rounded-full uppercase tracking-wider">
+                              🚚 Pending Delivery
+                            </span>
                           )}
                         </div>
                       </div>

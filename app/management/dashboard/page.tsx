@@ -10,17 +10,15 @@ export default function ManagementDashboard() {
   const [pendingOrders, setPendingOrders] = useState(0);
   const [products, setProducts] = useState<any[]>([]);
   const [activeTrucks, setActiveTrucks] = useState<any[]>([]);
+  const [unconfirmedDeliveries, setUnconfirmedDeliveries] = useState<any[]>([]);
   const [uploading, setUploading] = useState(false);
 
   const router = useRouter();
 
   const fetchNotificationData = async () => {
     try {
-      const Order = parseClient.Object.extend("Order");
-      const query = new parseClient.Query(Order);
-      query.equalTo("status", "Pending Approval");
-      const count = await query.count();
-      setPendingOrders(count);
+      const result: any = await parseClient.Cloud.run("getPendingOrderCount");
+      setPendingOrders(result.count);
     } catch (error) {
       console.error("Notification Error:", error);
     }
@@ -76,7 +74,7 @@ export default function ManagementDashboard() {
     return () => clearInterval(interval);
   }, []);
 
-  // --- 3. DATA LOADING (Products + Logistics) ---
+  // --- 3. DATA LOADING (Products + Logistics + Unconfirmed Deliveries) ---
   useEffect(() => {
     async function fetchData() {
       try {
@@ -84,12 +82,22 @@ export default function ManagementDashboard() {
         const prodResults = await new parseClient.Query(Product).find();
         setProducts(prodResults);
 
-        const Delivery = parseClient.Object.extend("Deliveries");
-        const deliveryQuery = new parseClient.Query(Delivery);
-        deliveryQuery.equalTo("status", "In Transit");
-        deliveryQuery.descending("createdAt");
-        const truckResults = await deliveryQuery.find();
+        const Cargo = parseClient.Object.extend("Cargo");
+        const cargoQuery = new parseClient.Query(Cargo);
+        cargoQuery.equalTo("status", "In Transit");
+        cargoQuery.descending("createdAt");
+        cargoQuery.include("fromCity");
+        cargoQuery.include("toCity");
+        const truckResults = await cargoQuery.find();
         setActiveTrucks(truckResults);
+
+        // Fetch dispatched orders awaiting customer confirmation
+        const Order = parseClient.Object.extend("Order");
+        const orderQuery = new parseClient.Query(Order);
+        orderQuery.equalTo("status", "Dispatched");
+        orderQuery.descending("createdAt");
+        const dispatchedOrders = await orderQuery.find();
+        setUnconfirmedDeliveries(dispatchedOrders);
       } catch (error) {
         console.error("Management data fetch error:", error);
       }
@@ -110,8 +118,8 @@ export default function ManagementDashboard() {
 
   const fetchLogistics = async () => {
     try {
-      const Delivery = parseClient.Object.extend("Deliveries");
-      const query = new parseClient.Query(Delivery);
+      const Cargo = parseClient.Object.extend("Cargo");
+      const query = new parseClient.Query(Cargo);
       query.equalTo("status", "In Transit");
       query.descending("createdAt");
       const results = await query.find();
@@ -122,17 +130,22 @@ export default function ManagementDashboard() {
   };
 
   // --- 5. ARRIVAL HANDLER (same cloud function as admin) ---
-  const handleBulkConfirmArrival = async (items: any[]) => {
-    if (items.length === 0) return;
+  const handleBulkConfirmArrival = async (cargo: any) => {
+    if (!cargo) return;
     setUploading(true);
 
     try {
-      const firstItemStatus = items[0]?.get("transitStatus") || "";
-      const destCityName = firstItemStatus.replace("In Transit to ", "").trim();
+      const destCityName = cargo.get("toCity") || "";
       const destinationHub = `${destCityName} Warehouse`;
 
+      const itemNames = cargo.get("itemNames") || [];
+      const matchingProducts = products.filter((p) =>
+        itemNames.includes(p.get("name")),
+      );
+      const productIds = matchingProducts.map((p) => p.id);
+
       const result = await parseClient.Cloud.run("confirmArrival", {
-        productIds: items.map((item) => item.id),
+        productIds,
         destinationHub,
         destCityName,
       });
@@ -288,7 +301,23 @@ export default function ManagementDashboard() {
             </div>
           </Link>
 
-          {/* 5. CHAT */}
+          {/* 5. HISTORY */}
+          <Link href="/management/history" className="group">
+            <div className="bg-white p-8 rounded-[2.5rem] border border-gray-100 shadow-sm hover:shadow-xl transition-all h-full border-b-4 border-b-purple-500">
+              <div className="w-12 h-12 bg-purple-50 rounded-2xl flex items-center justify-center text-xl mb-6 group-hover:bg-purple-600 group-hover:text-white transition-all">
+                📜
+              </div>
+              <h2 className="text-sm font-black uppercase mb-2">History</h2>
+              <p className="text-gray-400 text-[10px] font-bold uppercase tracking-tight">
+                Orders & Cargo Archive
+              </p>
+              <div className="mt-8 flex items-center text-[10px] font-black uppercase tracking-widest text-indigo-600">
+                Open Terminal →
+              </div>
+            </div>
+          </Link>
+
+          {/* 7. CHAT */}
           <Link href="/management/chat" className="group relative">
             <div className="bg-white p-8 rounded-[2.5rem] border border-gray-100 shadow-sm hover:shadow-xl transition-all h-full">
               {unreadCount > 0 && (
@@ -322,108 +351,59 @@ export default function ManagementDashboard() {
           </div>
 
           <div className="space-y-6">
-            {/* Logic: Group items by their transit status string */}
-            {(
-              Object.entries(
-                products.reduce(
-                  (acc, p) => {
-                    const status = p.get("transitStatus");
-                    if (status) {
-                      if (!acc[status]) acc[status] = [];
-                      acc[status].push(p);
-                    }
-                    return acc;
-                  },
-                  {} as Record<string, any[]>,
-                ),
-              ) as [string, any[]][]
-            ).map(([status, items], i) => {
-              // Find matching truck record to get origin/destination info
-              const truck = activeTrucks.find((t) => {
-                const dest = t.get("destination") || "";
-                return (
-                  status
-                    .toLowerCase()
-                    .includes(dest.toLowerCase().replace(" warehouse", "")) ||
-                  status.includes(t.get("toCityName") || "")
-                );
-              });
-              const origin =
-                truck?.get("origin")?.replace(" Hub", "") ||
-                status.replace("In Transit to ", "");
-              const destination =
-                truck?.get("destination")?.replace(" Warehouse", "") ||
-                status.replace("In Transit to ", "");
-              const originCode = origin.substring(0, 3).toUpperCase();
-              const destCode = destination.substring(0, 3).toUpperCase();
+            {/* Logic: Show cargo records that are In Transit */}
+            {activeTrucks.length > 0 ? (
+              activeTrucks.map((cargo: any, i: number) => {
+                const itemNames = cargo.get("itemNames") || [];
+                const itemQtys = cargo.get("itemQtys") || [];
+                const fromCity = cargo.get("fromCity") || "";
+                const toCity = cargo.get("toCity") || "";
 
-              return (
-                <div
-                  key={i}
-                  className="bg-[#fbfbfd] rounded-[2.5rem] p-7 border border-gray-100 shadow-sm flex flex-col lg:flex-row items-center gap-8 transition-all hover:border-blue-200 mb-4"
-                >
-                  {/* 1. THE TRUCK & ITEM LIST */}
-                  <div className="flex items-center gap-6 flex-1">
-                    <div className="bg-white p-5 rounded-3xl shadow-sm text-4xl border border-gray-100">
-                      🚚
-                    </div>
-                    <div>
-                      <p className="text-[10px] font-black text-orange-600 uppercase tracking-widest mb-2 flex items-center gap-2">
-                        {origin} ➔ {destination}
-                      </p>
-                      <div className="flex flex-wrap gap-2">
-                        {items.map((item: any, idx: number) => {
-                          // Look up actual quantity from truck record's itemQtys array
-                          const itemNames = truck?.get("itemNames") || [];
-                          const itemQtys = truck?.get("itemQtys") || [];
-                          const nameIdx = itemNames.indexOf(item.get("name"));
-                          const qty = nameIdx >= 0 ? itemQtys[nameIdx] : "?";
-                          return (
+                return (
+                  <div
+                    key={i}
+                    className="bg-[#fbfbfd] rounded-[2.5rem] p-7 border border-gray-100 shadow-sm flex flex-col lg:flex-row items-center gap-8 transition-all hover:border-blue-200 mb-4"
+                  >
+                    {/* 1. THE TRUCK & ITEM LIST */}
+                    <div className="flex items-center gap-6 flex-1">
+                      <div className="bg-white p-5 rounded-3xl shadow-sm text-4xl border border-gray-100">
+                        🚚
+                      </div>
+                      <div>
+                        <p className="text-[10px] font-black text-orange-600 uppercase tracking-widest mb-2 flex items-center gap-2">
+                          🚛 {fromCity} <span className="text-blue-500">➔</span>{" "}
+                          {toCity}
+                        </p>
+                        <div className="flex flex-wrap gap-2">
+                          {itemNames.map((name: string, idx: number) => (
                             <div
                               key={idx}
                               className="flex items-center gap-2 bg-white px-3 py-1.5 rounded-xl border border-gray-100 shadow-sm"
                             >
                               <span className="text-[10px] font-black text-[#1d1d1f]">
-                                {item.get("name")}
+                                {name}
                               </span>
-                              <span className="text-[8px] font-black bg-blue-50 text-blue-500 px-1.5 py-0.5 rounded">
-                                x{qty}
+                              <span className="text-[7px] font-black bg-black text-white px-1.5 py-0.5 rounded ml-1">
+                                {itemQtys[idx] || 0} UNITS
                               </span>
                             </div>
-                          );
-                        })}
+                          ))}
+                        </div>
                       </div>
                     </div>
+
+                    <button
+                      onClick={() => handleBulkConfirmArrival(cargo)}
+                      disabled={uploading}
+                      className="bg-[#1d1d1f] text-white text-[10px] font-black px-8 py-4 rounded-2xl uppercase tracking-widest hover:bg-green-600 transition-all shadow-xl active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      {uploading ? "Confirming..." : "Confirm Arrival"}
+                    </button>
                   </div>
-
-                  {/* 2. PROGRESS BAR & ACTION */}
-                  <div className="flex items-center gap-4 min-w-[200px]">
-                    <span className="text-[9px] font-black text-blue-500">
-                      {originCode}
-                    </span>
-                    <div className="w-32 h-1 bg-gray-200 rounded-full relative overflow-hidden">
-                      <div className="absolute top-0 bottom-0 bg-blue-500 transition-all duration-1000 left-1/2 right-0"></div>
-                    </div>
-                    <span className="text-[9px] font-black text-emerald-500">
-                      {destCode}
-                    </span>
-                  </div>
-
-                  <button
-                    onClick={() => handleBulkConfirmArrival(items)}
-                    disabled={uploading}
-                    className="bg-[#1d1d1f] text-white text-[10px] font-black px-8 py-4 rounded-2xl uppercase tracking-widest hover:bg-green-600 transition-all shadow-xl active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    {uploading
-                      ? "Confirming..."
-                      : `Confirm Arrival (${items.length})`}
-                  </button>
-                </div>
-              );
-            })}
-
-            {/* Empty State */}
-            {products.filter((p) => p.get("transitStatus")).length === 0 && (
+                );
+              })
+            ) : (
+              /* Empty State */
               <div className="text-center py-16 bg-gray-50/50 rounded-[3rem] border-2 border-dashed border-gray-100">
                 <p className="text-[10px] text-gray-300 font-black uppercase tracking-[0.4em] mb-4">
                   No Cargo in Transit
@@ -434,6 +414,96 @@ export default function ManagementDashboard() {
                 >
                   Go to Logistics →
                 </Link>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* --- PENDING CUSTOMER CONFIRMATION SECTION --- */}
+        <div className="bg-white p-8 rounded-[3rem] shadow-sm border border-gray-100 mt-6 overflow-hidden">
+          <div className="flex justify-between items-center mb-8">
+            <div className="flex items-center gap-3">
+              <div className="bg-amber-500 h-2 w-2 rounded-full animate-pulse"></div>
+              <h3 className="text-[11px] font-black uppercase tracking-[0.2em] text-[#1d1d1f]">
+                Pending Customer Confirmation
+              </h3>
+              <span className="text-[9px] font-black bg-amber-100 text-amber-700 px-3 py-1 rounded-full">
+                {unconfirmedDeliveries.length} Active
+              </span>
+            </div>
+            <button
+              onClick={async () => {
+                const Order = parseClient.Object.extend("Order");
+                const orderQuery = new parseClient.Query(Order);
+                orderQuery.equalTo("status", "Dispatched");
+                orderQuery.descending("createdAt");
+                const results = await orderQuery.find();
+                setUnconfirmedDeliveries(results);
+              }}
+              className="text-[9px] font-black text-gray-400 hover:text-black uppercase tracking-widest transition-colors"
+            >
+              ↻ Refresh
+            </button>
+          </div>
+
+          <div className="space-y-4">
+            {unconfirmedDeliveries.length > 0 ? (
+              unconfirmedDeliveries.map((order: any) => {
+                const dispatchedAt =
+                  order.get("updatedAt") || order.get("createdAt");
+                const minutesAgo = Math.floor(
+                  (Date.now() - new Date(dispatchedAt).getTime()) / 60000,
+                );
+                const timeAgo =
+                  minutesAgo < 60
+                    ? `${minutesAgo}m ago`
+                    : `${Math.floor(minutesAgo / 60)}h ${minutesAgo % 60}m ago`;
+
+                return (
+                  <div
+                    key={order.id}
+                    className="bg-[#fbfbfd] rounded-[2.5rem] p-6 border border-gray-100 shadow-sm flex items-center justify-between transition-all hover:border-amber-300"
+                  >
+                    <div className="flex items-center gap-5">
+                      <div className="bg-amber-50 p-4 rounded-2xl text-2xl">
+                        📦
+                      </div>
+                      <div>
+                        <p className="text-[10px] font-black text-amber-700 uppercase tracking-widest mb-1">
+                          {order.get("orderNumber")
+                            ? `Order #${order.get("orderNumber")}`
+                            : `Order #${order.id.slice(-5).toUpperCase()}`}
+                        </p>
+                        <p className="text-sm font-bold text-gray-900">
+                          {order.get("recipientName")}
+                        </p>
+                        <p className="text-[10px] text-gray-400 italic truncate max-w-[250px]">
+                          {order.get("itemSummary")}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-6">
+                      <div className="text-right">
+                        <p className="text-lg font-black text-gray-900 tracking-tighter">
+                          ${(order.get("total") || 0).toLocaleString()}
+                        </p>
+                        <p className="text-[9px] text-gray-400 font-bold uppercase tracking-widest">
+                          Dispatched {timeAgo}
+                        </p>
+                      </div>
+                      <span className="bg-amber-100 text-amber-700 text-[9px] font-black px-4 py-2 rounded-full uppercase tracking-widest whitespace-nowrap">
+                        Awaiting Confirmation
+                      </span>
+                    </div>
+                  </div>
+                );
+              })
+            ) : (
+              <div className="text-center py-12 bg-gray-50/50 rounded-[3rem] border-2 border-dashed border-gray-100">
+                <p className="text-[10px] text-gray-300 font-black uppercase tracking-[0.4em]">
+                  All deliveries confirmed ✓
+                </p>
               </div>
             )}
           </div>

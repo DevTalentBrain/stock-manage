@@ -242,12 +242,14 @@ function DashboardContent() {
   // --- 3. LOGISTICS FETCHING (defined before arrival handler so it's available) ---
   const fetchLogistics = async () => {
     try {
-      const Delivery = parseClient.Object.extend("Deliveries");
-      const query = new parseClient.Query(Delivery);
+      const Cargo = parseClient.Object.extend("Cargo");
+      const query = new parseClient.Query(Cargo);
 
-      // We only want to see trucks that are currently on the road
+      // We only want to see cargo records that are currently on the road
       query.equalTo("status", "In Transit");
       query.descending("createdAt");
+      query.include("fromCity");
+      query.include("toCity");
 
       const results = await query.find();
       setActiveTrucks(results); // This updates the state so the UI shows the trucks
@@ -257,20 +259,26 @@ function DashboardContent() {
   };
 
   // 4. Define the Arrival Handler
-  const handleBulkConfirmArrival = async (items: any[]) => {
-    if (items.length === 0) return;
+  const handleBulkConfirmArrival = async (cargo: any) => {
+    if (!cargo) return;
     setUploading(true);
 
     try {
-      // 1. Identify the destination from the items BEFORE we clear them
-      const firstItemStatus = items[0]?.get("transitStatus") || "";
-      // Extract destination city name from transit status (e.g. "In Transit to Kaunas")
-      const destCityName = firstItemStatus.replace("In Transit to ", "").trim();
+      // Get the destination city name from the cargo record
+      const destCityName = cargo.get("toCity") || "";
       const destinationHub = `${destCityName} Warehouse`;
 
-      // 🚩 2. MARK PRODUCTS AS DELIVERED & CLOSE TRUCK RECORD (via cloud function with master key)
+      // Get product IDs from the cargo record's item names
+      // We need to find products that match the cargo item names
+      const itemNames = cargo.get("itemNames") || [];
+      const matchingProducts = products.filter((p) =>
+        itemNames.includes(p.get("name")),
+      );
+      const productIds = matchingProducts.map((p) => p.id);
+
+      // 🚩 2. MARK PRODUCTS AS DELIVERED & CLOSE CARGO RECORD (via cloud function with master key)
       const result = await parseClient.Cloud.run("confirmArrival", {
-        productIds: items.map((item) => item.id),
+        productIds,
         destinationHub,
         destCityName,
       });
@@ -281,7 +289,7 @@ function DashboardContent() {
         `✅ SUCCESS: Arrival confirmed at ${destinationHub}. Inventory flags cleared.`,
       );
 
-      // 5. REFRESH UI — re-fetch products & deliveries to remove delivered items from listings
+      // 5. REFRESH UI — re-fetch products & cargo to remove delivered items from listings
       await refreshProducts();
       await fetchLogistics();
     } catch (error: any) {
@@ -340,7 +348,7 @@ function DashboardContent() {
         <header className="mb-10 flex justify-between items-end">
           <div>
             <h1 className="text-4xl font-black tracking-tight uppercase">
-              Inventory Management
+              Inventory Admin
             </h1>
             <p className="text-gray-500 font-medium italic">Dashboard System</p>
           </div>
@@ -542,111 +550,58 @@ function DashboardContent() {
           </div>
 
           <div className="space-y-6">
-            {/* Logic: Group items by their transit status string */}
-            {(
-              Object.entries(
-                products.reduce(
-                  (acc, p) => {
-                    const status = p.get("transitStatus");
-                    if (status) {
-                      if (!acc[status]) acc[status] = [];
-                      acc[status].push(p);
-                    }
-                    return acc;
-                  },
-                  {} as Record<string, any[]>,
-                ),
-              ) as [string, any[]][]
-            ).map(([status, items], i) => {
-              // Find matching truck record to get origin/destination info
-              const truck = activeTrucks.find((t) => {
-                const dest = t.get("destination") || "";
-                return (
-                  status
-                    .toLowerCase()
-                    .includes(dest.toLowerCase().replace(" warehouse", "")) ||
-                  status.includes(t.get("toCityName") || "")
-                );
-              });
-              const origin =
-                truck?.get("origin")?.replace(" Hub", "") ||
-                status.replace("In Transit to ", "");
-              const destination =
-                truck?.get("destination")?.replace(" Warehouse", "") ||
-                status.replace("In Transit to ", "");
-              const originCode =
-                cities.find((c) =>
-                  origin.toLowerCase().includes(c.name.toLowerCase()),
-                )?.shortCode || origin.substring(0, 3).toUpperCase();
-              const destCode =
-                cities.find((c) =>
-                  destination.toLowerCase().includes(c.name.toLowerCase()),
-                )?.shortCode || destination.substring(0, 3).toUpperCase();
+            {/* Logic: Show cargo records that are In Transit */}
+            {activeTrucks.length > 0 ? (
+              activeTrucks.map((cargo: any, i: number) => {
+                const itemNames = cargo.get("itemNames") || [];
+                const itemQtys = cargo.get("itemQtys") || [];
+                const fromCity = cargo.get("fromCity") || "";
+                const toCity = cargo.get("toCity") || "";
 
-              return (
-                <div
-                  key={i}
-                  className="bg-[#fbfbfd] rounded-[2.5rem] p-7 border border-gray-100 shadow-sm flex flex-col lg:flex-row items-center gap-8 transition-all hover:border-blue-200 mb-4"
-                >
-                  {/* 1. THE TRUCK & ITEM LIST */}
-                  <div className="flex items-center gap-6 flex-1">
-                    <div className="bg-white p-5 rounded-3xl shadow-sm text-4xl border border-gray-100">
-                      🚚
-                    </div>
-                    <div>
-                      <p className="text-[10px] font-black text-orange-600 uppercase tracking-widest mb-2 flex items-center gap-2">
-                        {origin} ➔ {destination}
-                      </p>
-                      <div className="flex flex-wrap gap-2">
-                        {items.map((item: any, idx: number) => {
-                          // Look up actual quantity from truck record's itemQtys array
-                          const itemNames = truck?.get("itemNames") || [];
-                          const itemQtys = truck?.get("itemQtys") || [];
-                          const nameIdx = itemNames.indexOf(item.get("name"));
-                          const qty = nameIdx >= 0 ? itemQtys[nameIdx] : "?";
-                          return (
+                return (
+                  <div
+                    key={i}
+                    className="bg-[#fbfbfd] rounded-[2.5rem] p-7 border border-gray-100 shadow-sm flex flex-col lg:flex-row items-center gap-8 transition-all hover:border-blue-200 mb-4"
+                  >
+                    {/* 1. THE TRUCK & ITEM LIST */}
+                    <div className="flex items-center gap-6 flex-1">
+                      <div className="bg-white p-5 rounded-3xl shadow-sm text-4xl border border-gray-100">
+                        🚚
+                      </div>
+                      <div>
+                        <p className="text-[10px] font-black text-orange-600 uppercase tracking-widest mb-2 flex items-center gap-2">
+                          🚛 {fromCity} <span className="text-blue-500">➔</span>{" "}
+                          {toCity}
+                        </p>
+                        <div className="flex flex-wrap gap-2">
+                          {itemNames.map((name: string, idx: number) => (
                             <div
                               key={idx}
                               className="flex items-center gap-2 bg-white px-3 py-1.5 rounded-xl border border-gray-100 shadow-sm"
                             >
                               <span className="text-[10px] font-black text-[#1d1d1f]">
-                                {item.get("name")}
+                                {name}
                               </span>
-                              <span className="text-[8px] font-black bg-blue-50 text-blue-500 px-1.5 py-0.5 rounded">
-                                x{qty}
+                              <span className="text-[7px] font-black bg-black text-white px-1.5 py-0.5 rounded ml-1">
+                                {itemQtys[idx] || 0} UNITS
                               </span>
                             </div>
-                          );
-                        })}
+                          ))}
+                        </div>
                       </div>
                     </div>
+
+                    <button
+                      onClick={() => handleBulkConfirmArrival(cargo)}
+                      className="bg-[#1d1d1f] text-white text-[10px] font-black px-8 py-4 rounded-2xl uppercase tracking-widest hover:bg-green-600 transition-all shadow-xl active:scale-95"
+                    >
+                      Confirm Arrival
+                    </button>
                   </div>
-
-                  {/* 2. PROGRESS BAR & ACTION */}
-                  <div className="flex items-center gap-4 min-w-[200px]">
-                    <span className="text-[9px] font-black text-blue-500">
-                      {originCode}
-                    </span>
-                    <div className="w-32 h-1 bg-gray-200 rounded-full relative overflow-hidden">
-                      <div className="absolute top-0 bottom-0 bg-blue-500 transition-all duration-1000 left-1/2 right-0"></div>
-                    </div>
-                    <span className="text-[9px] font-black text-emerald-500">
-                      {destCode}
-                    </span>
-                  </div>
-
-                  <button
-                    onClick={() => handleBulkConfirmArrival(items)}
-                    className="bg-[#1d1d1f] text-white text-[10px] font-black px-8 py-4 rounded-2xl uppercase tracking-widest hover:bg-green-600 transition-all shadow-xl active:scale-95"
-                  >
-                    Confirm Arrival ({items.length})
-                  </button>
-                </div>
-              );
-            })}
-
-            {/* Empty State with History Shortcut */}
-            {products.filter((p) => p.get("transitStatus")).length === 0 && (
+                );
+              })
+            ) : (
+              /* Empty State with History Shortcut */
               <div className="text-center py-16 bg-gray-50/50 rounded-[3rem] border-2 border-dashed border-gray-100">
                 <p className="text-[10px] text-gray-300 font-black uppercase tracking-[0.4em] mb-4">
                   No Cargo in Transit

@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import parseClient from "@/lib/parse-client";
+import { printInvoice } from "@/lib/invoice";
 import Link from "next/link";
 
 export default function OrderManager() {
@@ -27,28 +28,47 @@ export default function OrderManager() {
     fetchOrders();
   }, []);
 
-  const handleApprove = async (orderId: string) => {
+  const handleConfirmPayment = async (orderId: string) => {
     if (!orderId) return;
     setIsProcessing(true);
 
     try {
-      // 1. Fetch the Order (The link to the User)
+      const OrderQuery = new parseClient.Query("Order");
+      const actualOrder = await OrderQuery.get(orderId);
+      actualOrder.set("status", "Approved");
+      await actualOrder.save();
+
+      alert("✅ Payment confirmed. Order is now Approved.");
+      setSelectedOrder(null);
+      fetchOrders();
+    } catch (error: any) {
+      console.error("PAYMENT CONFIRM ERROR:", error);
+      alert("Error: " + error.message);
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  const handleDispatch = async (orderId: string) => {
+    if (!orderId) return;
+    setIsProcessing(true);
+
+    try {
+      // 1. Fetch the Order
       const OrderQuery = new parseClient.Query("Order");
       const actualOrder = await OrderQuery.get(orderId);
 
       // 2. Fetch or Prepare the Delivery Manifest
       const deliveryQuery = new parseClient.Query("Deliveries");
-      deliveryQuery.equalTo("orderId", orderId);
+      deliveryQuery.equalTo("order", actualOrder);
       const existingDelivery = await deliveryQuery.first();
 
-      // 🚩 THE FIX: Guarantee that 'finalDelivery' is a real object
       let finalDelivery: any;
 
       if (!existingDelivery) {
         const Deliveries = parseClient.Object.extend("Deliveries");
         const newDelivery = new Deliveries();
-
-        newDelivery.set("orderId", orderId);
+        newDelivery.set("order", actualOrder);
 
         const acl = new parseClient.ACL();
         acl.setPublicReadAccess(true);
@@ -60,25 +80,20 @@ export default function OrderManager() {
         finalDelivery = existingDelivery;
       }
 
-      // 🚩 3. EXECUTE UPDATES
-      // Now TypeScript knows 'finalDelivery' is NOT undefined
       const trackingNo =
         "TRK-" + Math.random().toString(36).toUpperCase().slice(2, 10);
 
       finalDelivery.set("status", "Dispatched");
       finalDelivery.set("trackingNumber", trackingNo);
-
-      // Save Manifest
       await finalDelivery.save();
 
-      // Update Order Status (This triggers the Notification in User's Navbar)
+      // Update Order Status
       actualOrder.set("status", "Dispatched");
       await actualOrder.save();
 
-      // 4. UI SUCCESS ACTIONS
       alert("🚛 Manifest Finalized and User notified.");
-      setSelectedOrder(null); // This closes the Inspect modal
-      fetchOrders(); // Refreshes the manager list
+      setSelectedOrder(null);
+      fetchOrders();
     } catch (error: any) {
       console.error("DISPATCH ERROR:", error);
       alert("Dispatch Error: " + error.message);
@@ -87,113 +102,20 @@ export default function OrderManager() {
     }
   };
 
-  // --- 🚩 INVOICE GENERATOR FUNCTION ---
-  const printInvoice = (order: any) => {
-    const printWindow = window.open("", "_blank");
-    if (!printWindow) return;
-
-    // Split the itemSummary string into an array for a cleaner table look
-    const rawSummary = order.get("itemSummary") || "";
-    const itemsArray = rawSummary.split(",").map((item: string) => item.trim());
-
-    printWindow.document.write(`
-      <html>
-        <head>
-          <title>Manifest - ${order.id}</title>
-          <style>
-            @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&display=swap');
-            body { font-family: 'Inter', sans-serif; padding: 60px; color: #1d1d1f; line-height: 1.4; }
-            .header { border-bottom: 8px solid #000; padding-bottom: 30px; display: flex; justify-content: space-between; align-items: flex-start; }
-            .logo-text { margin: 0; font-size: 42px; font-weight: 900; letter-spacing: -2.5px; line-height: 1; }
-            .sub-logo { margin: 5px 0 0 0; font-weight: 700; font-size: 11px; color: #86868b; text-transform: uppercase; letter-spacing: 2px; }
-            .meta-box { text-align: right; }
-            .barcode { font-family: 'Courier', monospace; font-size: 18px; font-weight: bold; background: #000; color: #fff; padding: 5px 15px; display: inline-block; margin-bottom: 10px; }
-            .content { margin-top: 50px; display: grid; grid-template-columns: 1fr 1fr; gap: 40px; }
-            .section-title { font-size: 10px; font-weight: 900; text-transform: uppercase; color: #86868b; border-bottom: 1px solid #f5f5f7; padding-bottom: 8px; margin-bottom: 15px; letter-spacing: 1px; }
-            .address-block { font-size: 15px; font-weight: 600; }
-            .address-block strong { display: block; font-size: 18px; margin-bottom: 5px; color: #000; }
-            .items-table { width: 100%; border-collapse: collapse; margin-top: 50px; }
-            .items-table th { text-align: left; font-size: 10px; text-transform: uppercase; padding: 15px; background: #000; color: #fff; }
-            .items-table td { padding: 15px; border-bottom: 1px solid #f5f5f7; font-weight: 700; font-size: 14px; }
-            .total-row { background: #f5f5f7; }
-            .total-label { text-transform: uppercase; font-size: 10px; font-weight: 900; padding-right: 15px; }
-            .total-amount { font-size: 22px; font-weight: 900; color: #000; }
-            .footer { margin-top: 80px; padding-top: 20px; border-top: 1px solid #f5f5f7; font-size: 9px; font-weight: 700; text-transform: uppercase; color: #86868b; display: flex; justify-content: space-between; }
-          </style>
-        </head>
-        <body>
-          <div class="header">
-            <div>
-              <h1 class="logo-text">CARGO HUB</h1>
-              <p class="sub-logo">Global Logistics Registry</p>
-            </div>
-            <div class="meta-box">
-              <div class="barcode">${order.id.toUpperCase()}</div>
-              <p style="margin:0; font-size: 12px; font-weight: 700;">Date: ${new Date().toLocaleDateString()}</p>
-            </div>
-          </div>
-
-          <div class="content">
-            <div>
-              <div class="section-title">Consignee (Recipient)</div>
-              <div class="address-block">
-                <strong>${order.get("recipientName")}</strong>
-                ${order.get("address")}<br>
-                TEL: ${order.get("phone")}
-              </div>
-            </div>
-            <div>
-              <div class="section-title">Shipping Information</div>
-              <div class="address-block">
-                <strong>Hub Dispatch</strong>
-                Status: ${order.get("status") || "Pending Approval"}<br>
-                Origin: ${order.get("cities")?.join(", ") || "Main"} Logistics Hub
-              </div>
-            </div>
-          </div>
-
-          <table class="items-table">
-            <thead>
-              <tr>
-                <th>Inventory Item Description</th>
-                <th style="text-align: right;">Quantity Check</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${
-                itemsArray.length > 0 && itemsArray[0] !== ""
-                  ? itemsArray
-                      .map(
-                        (item: any) => `
-                  <tr>
-                    <td>${item.split(" x")[0]}</td>
-                    <td style="text-align: right;">x${item.split(" x")[1] || "1"}</td>
-                  </tr>
-                `,
-                      )
-                      .join("")
-                  : `<tr><td colspan="2" style="color:#ccc; font-style:italic;">General Cargo Payload (No specific items listed)</td></tr>`
-              }
-              <tr class="total-row">
-                <td class="total-label" style="text-align: right;">Manifest Declared Value</td>
-                <td style="text-align: right;" class="total-amount">$${(order.get("total") || 0).toLocaleString()}</td>
-              </tr>
-            </tbody>
-          </table>
-
-          <div class="footer">
-            <div>Auth ID: ${Math.random().toString(36).substr(2, 9).toUpperCase()}</div>
-            <div>© 2026 Cargo Hub Inventory Systems</div>
-            <div>Generated: ${new Date().toLocaleTimeString()}</div>
-          </div>
-        </body>
-      </html>
-    `);
-    printWindow.document.close();
-    // Short delay to ensure styles load before printing
-    setTimeout(() => {
-      printWindow.print();
-    }, 500);
+  // --- 🚩 INVOICE HANDLER (fetches tracking, then uses shared utility) ---
+  const handlePrintInvoice = async (order: any) => {
+    let trackingNumber = "";
+    try {
+      const deliveryQuery = new parseClient.Query("Deliveries");
+      deliveryQuery.equalTo("order", order);
+      const delivery = await deliveryQuery.first();
+      if (delivery) {
+        trackingNumber = delivery.get("trackingNumber") || "";
+      }
+    } catch (e) {
+      console.error("Could not fetch tracking info:", e);
+    }
+    printInvoice(order, trackingNumber);
   };
 
   return (
@@ -234,7 +156,9 @@ export default function OrderManager() {
                   className="hover:bg-gray-50/30 transition-all group"
                 >
                   <td className="px-8 py-5 font-bold text-blue-600 text-sm">
-                    #{order.id.slice(-6).toUpperCase()}
+                    {order.get("orderNumber")
+                      ? `#${order.get("orderNumber")}`
+                      : `#${order.id.slice(-6).toUpperCase()}`}
                   </td>
                   <td className="px-6 py-5">
                     <p className="text-sm font-bold">
@@ -252,16 +176,22 @@ export default function OrderManager() {
                       className={`px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-tighter ${
                         order.get("status") === "Dispatched"
                           ? "bg-green-100 text-green-600"
-                          : "bg-blue-50 text-blue-600"
+                          : order.get("status") === "Complete"
+                            ? "bg-emerald-100 text-emerald-700"
+                            : "bg-blue-50 text-blue-600"
                       }`}
                     >
-                      {order.get("status") || "Pending"}
+                      {order.get("status") === "Pending Approval"
+                        ? "Pending Confirmation"
+                        : order.get("status") === "Approved"
+                          ? "Payment Complete"
+                          : order.get("status") || "Pending"}
                     </span>
                   </td>
                   <td className="px-8 py-5 text-right flex items-center justify-end gap-3">
                     {/* 🚩 PRINT INVOICE BUTTON */}
                     <button
-                      onClick={() => printInvoice(order)}
+                      onClick={() => handlePrintInvoice(order)}
                       className="p-2 text-gray-300 hover:text-black transition-colors"
                       title="Print Invoice"
                     >
@@ -280,7 +210,24 @@ export default function OrderManager() {
                       </svg>
                     </button>
 
-                    {order.get("status") !== "Dispatched" ? (
+                    {order.get("status") === "Complete" ? (
+                      <span className="text-[9px] font-black text-emerald-600 uppercase tracking-widest flex items-center gap-2">
+                        Complete{" "}
+                        <svg
+                          className="w-3 h-3 text-emerald-500"
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth="3"
+                            d="M5 13l4 4L19 7"
+                          />
+                        </svg>
+                      </span>
+                    ) : order.get("status") !== "Dispatched" ? (
                       <button
                         onClick={() => setSelectedOrder(order)}
                         className="bg-black text-white px-6 py-2 rounded-full text-[9px] font-black uppercase tracking-widest hover:bg-indigo-600 transition-all active:scale-95 shadow-lg shadow-black/5"
@@ -323,7 +270,9 @@ export default function OrderManager() {
                   Cargo Manifest
                 </h2>
                 <p className="text-[10px] text-gray-400 font-bold uppercase tracking-[0.2em]">
-                  Order #{selectedOrder.id.toUpperCase()}
+                  {selectedOrder.get("orderNumber")
+                    ? `Order #${selectedOrder.get("orderNumber")}`
+                    : `Order #${selectedOrder.id.toUpperCase()}`}
                 </p>
               </div>
               <button
@@ -364,13 +313,27 @@ export default function OrderManager() {
               >
                 Cancel
               </button>
-              <button
-                onClick={() => handleApprove(selectedOrder.id)}
-                disabled={isProcessing}
-                className="flex-[2] py-5 rounded-full font-black uppercase text-[10px] tracking-widest bg-black text-white hover:bg-green-600 transition-all shadow-xl"
-              >
-                {isProcessing ? "Transmitting..." : "Confirm & Dispatch"}
-              </button>
+              {selectedOrder.get("status") === "Complete" ? (
+                <div className="flex-[2] py-5 rounded-full font-black uppercase text-[10px] tracking-widest bg-emerald-100 text-emerald-700 flex items-center justify-center">
+                  ✅ Complete
+                </div>
+              ) : selectedOrder.get("status") === "Pending Approval" ? (
+                <button
+                  onClick={() => handleConfirmPayment(selectedOrder.id)}
+                  disabled={isProcessing}
+                  className="flex-[2] py-5 rounded-full font-black uppercase text-[10px] tracking-widest bg-black text-white hover:bg-blue-600 transition-all shadow-xl"
+                >
+                  {isProcessing ? "Processing..." : "Confirm Payment"}
+                </button>
+              ) : (
+                <button
+                  onClick={() => handleDispatch(selectedOrder.id)}
+                  disabled={isProcessing}
+                  className="flex-[2] py-5 rounded-full font-black uppercase text-[10px] tracking-widest bg-black text-white hover:bg-green-600 transition-all shadow-xl"
+                >
+                  {isProcessing ? "Transmitting..." : "Confirm & Dispatch"}
+                </button>
+              )}
             </div>
           </div>
         </div>

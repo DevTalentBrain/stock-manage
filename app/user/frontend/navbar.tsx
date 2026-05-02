@@ -22,8 +22,6 @@ export default function Navbar({
 
   // --- NOTIFICATION DOT LOGIC ---
   useEffect(() => {
-    let subscription: any;
-
     const fetchNotifications = async () => {
       if (!user) {
         setNotifCount(0);
@@ -31,27 +29,8 @@ export default function Navbar({
       }
 
       try {
-        const Order = parseClient.Object.extend("Order");
-        const query = new parseClient.Query(Order);
-        query.equalTo("user", user);
-        // Only count what's new/updated but not yet "read" (In Transit)
-        query.containedIn("status", ["Approved", "Dispatched"]);
-
-        const count = await query.count();
-        setNotifCount(count);
-
-        // --- SETUP LIVE QUERY ---
-        // This listens for changes while the user is on the page
-        subscription = await query.subscribe();
-
-        subscription.on("create", () => {
-          setNotifCount((prev) => prev + 1);
-        });
-
-        subscription.on("update", (object: any) => {
-          // If status changed to something else (like "Delivered"), we refresh the count
-          fetchNotifications();
-        });
+        const result: any = await parseClient.Cloud.run("getNotificationCount");
+        setNotifCount(result.count);
       } catch (error) {
         console.error("Failed to sync notifications:", error);
       }
@@ -59,9 +38,21 @@ export default function Navbar({
 
     fetchNotifications();
 
-    // Optional: Refresh the count every 30 seconds
-    const interval = setInterval(fetchNotifications, 30000);
-    return () => clearInterval(interval);
+    // Poll every 5 seconds for near-real-time notification delivery
+    const interval = setInterval(fetchNotifications, 5000);
+
+    // Also re-fetch immediately when the user switches back to this tab
+    const onVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        fetchNotifications();
+      }
+    };
+    document.addEventListener("visibilitychange", onVisibilityChange);
+
+    return () => {
+      clearInterval(interval);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+    };
   }, [user, pathname]);
 
   const navLinks = [
