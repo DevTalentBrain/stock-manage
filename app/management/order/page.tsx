@@ -147,7 +147,7 @@ export default function OrderManager() {
               <div class="address-block">
                 <strong>Hub Dispatch</strong>
                 Status: ${order.get("status") || "Pending Approval"}<br>
-                Origin: Kaunas Logistics Hub
+                Origin: ${order.get("cities")?.join(", ") || "Main"} Logistics Hub
               </div>
             </div>
           </div>
