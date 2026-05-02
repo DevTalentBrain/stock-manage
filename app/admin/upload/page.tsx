@@ -18,7 +18,6 @@ function UploadContent() {
   const [editId, setEditId] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
   const [products, setProducts] = useState<any[]>([]);
-  const [orderCount, setOrderCount] = useState(0);
 
   // Dynamic stock by city: { [cityId]: number | string }
   const [stockByCity, setStockByCity] = useState<
@@ -34,11 +33,6 @@ function UploadContent() {
       pQuery.descending("createdAt");
       const pResults = await pQuery.find();
       setProducts(pResults);
-
-      const Order = parseClient.Object.extend("Order");
-      const oQuery = new parseClient.Query(Order);
-      const count = await oQuery.count();
-      setOrderCount(count);
 
       await refreshStock();
     } catch (error: any) {
