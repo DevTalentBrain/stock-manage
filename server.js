@@ -17,6 +17,11 @@ const api = new ParseServer({
   serverURL: "http://127.0.0.1:1337/parse",
   publicServerURL: "http://127.0.0.1:1337/parse",
 
+  // Enable LiveQuery for real-time updates
+  startLiveQueryServer: true,
+  liveQuery: {
+    classNames: ["Product", "CityStock", "Order", "Deliveries", "City"],
+  },
   masterKeyIps: ["0.0.0.0/0", "::/0", "127.0.0.1"], // Added '::1' for local IPv6
   allowClientClassCreation: true,
 
@@ -264,11 +269,17 @@ async function start() {
   app.use("/parse", api.app);
   app.use("/dashboard", dashboard);
 
-  app.listen(1337, "0.0.0.0", () => {
+  const server = app.listen(1337, "0.0.0.0", () => {
     console.log("--------------------------------------------");
     console.log("✅ Server: http://127.0.0.1:1337/parse");
     console.log("📊 Dashboard: http://127.0.0.1:1337/dashboard");
     console.log("--------------------------------------------");
+  });
+
+  // Manually create the LiveQuery WebSocket server on the same HTTP server
+  // This is needed because we use api.start() + manual app.listen() instead of ParseServer.startApp()
+  await ParseServer.createLiveQueryServer(server, {
+    classNames: ["Product", "CityStock", "Order", "Deliveries", "City"],
   });
 }
 
