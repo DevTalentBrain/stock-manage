@@ -598,19 +598,26 @@ function DashboardContent() {
                         {origin} ➔ {destination}
                       </p>
                       <div className="flex flex-wrap gap-2">
-                        {items.map((item: any, idx: number) => (
-                          <div
-                            key={idx}
-                            className="flex items-center gap-2 bg-white px-3 py-1.5 rounded-xl border border-gray-100 shadow-sm"
-                          >
-                            <span className="text-[10px] font-black text-[#1d1d1f]">
-                              {item.get("name")}
-                            </span>
-                            <span className="text-[8px] font-black bg-blue-50 text-blue-500 px-1.5 py-0.5 rounded">
-                              x5
-                            </span>
-                          </div>
-                        ))}
+                        {items.map((item: any, idx: number) => {
+                          // Look up actual quantity from truck record's itemQtys array
+                          const itemNames = truck?.get("itemNames") || [];
+                          const itemQtys = truck?.get("itemQtys") || [];
+                          const nameIdx = itemNames.indexOf(item.get("name"));
+                          const qty = nameIdx >= 0 ? itemQtys[nameIdx] : "?";
+                          return (
+                            <div
+                              key={idx}
+                              className="flex items-center gap-2 bg-white px-3 py-1.5 rounded-xl border border-gray-100 shadow-sm"
+                            >
+                              <span className="text-[10px] font-black text-[#1d1d1f]">
+                                {item.get("name")}
+                              </span>
+                              <span className="text-[8px] font-black bg-blue-50 text-blue-500 px-1.5 py-0.5 rounded">
+                                x{qty}
+                              </span>
+                            </div>
+                          );
+                        })}
                       </div>
                     </div>
                   </div>
