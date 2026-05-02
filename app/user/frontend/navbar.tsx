@@ -55,6 +55,17 @@ export default function Navbar({
     };
   }, [user, pathname]);
 
+  // Auto-clear notifications when user is on a page where they can see updates
+  useEffect(() => {
+    if (
+      user &&
+      (pathname === "/user/profile" || pathname === "/user/support")
+    ) {
+      parseClient.Cloud.run("clearNotifications").catch(() => {});
+      setNotifCount(0);
+    }
+  }, [user, pathname]);
+
   const navLinks = [
     { name: "Home", href: "/user/home" },
     { name: "Store", href: "/user/frontend" },

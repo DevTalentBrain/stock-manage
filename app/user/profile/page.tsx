@@ -344,12 +344,60 @@ export default function ProfilePage() {
               )}
 
               <div className="bg-white/5 p-6 rounded-[2rem] border border-white/10">
-                <p className="text-[9px] font-black text-gray-500 uppercase mb-2 tracking-widest">
-                  Inventory List
+                <p className="text-[9px] font-black text-gray-500 uppercase mb-4 tracking-widest">
+                  Products Ordered
                 </p>
-                <p className="text-sm font-bold">
-                  {selectedOrder.get("itemSummary")}
-                </p>
+                <div className="space-y-3">
+                  {(() => {
+                    const summary = selectedOrder.get("itemSummary") || "";
+                    const images = selectedOrder.get("itemImages") || [];
+                    // Parse "iPhone 15 x2, iPhone 16 x1" into items
+                    const items = summary
+                      .split(", ")
+                      .filter(Boolean)
+                      .map((part: string, idx: number) => {
+                        const match = part.match(/^(.+?)\s*x(\d+)$/);
+                        if (match) {
+                          return {
+                            name: match[1].trim(),
+                            qty: parseInt(match[2], 10),
+                            image: images[idx] || null,
+                          };
+                        }
+                        return {
+                          name: part.trim(),
+                          qty: 1,
+                          image: images[idx] || null,
+                        };
+                      });
+                    return items.map((item: any, idx: number) => (
+                      <div
+                        key={idx}
+                        className="flex items-center gap-4 bg-white/5 rounded-xl p-3 border border-white/5"
+                      >
+                        {item.image ? (
+                          <img
+                            src={item.image}
+                            alt={item.name}
+                            className="w-10 h-10 rounded-lg object-cover bg-white/10"
+                          />
+                        ) : (
+                          <div className="w-10 h-10 rounded-lg bg-white/10 flex items-center justify-center text-lg">
+                            📦
+                          </div>
+                        )}
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-bold truncate">
+                            {item.name}
+                          </p>
+                        </div>
+                        <span className="bg-blue-600 text-white text-[10px] font-black px-3 py-1 rounded-full shrink-0">
+                          x{item.qty}
+                        </span>
+                      </div>
+                    ));
+                  })()}
+                </div>
               </div>
 
               <div className="bg-white/5 p-6 rounded-[2rem] border border-white/10 flex justify-between items-center">

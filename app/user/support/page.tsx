@@ -20,6 +20,9 @@ export default function UserSupport() {
       setCurrentUser(user);
       fetchChatHistory(user);
 
+      // Clear notifications — user is on the support page and can see replies
+      parseClient.Cloud.run("clearNotifications").catch(() => {});
+
       // Live Polling every 4 seconds
       const interval = setInterval(() => fetchChatHistory(user), 4000);
       return () => clearInterval(interval);
@@ -40,6 +43,9 @@ export default function UserSupport() {
       playNotifySound();
       setShowNotification(true);
       setTimeout(() => setShowNotification(false), 5000);
+
+      // Clear notifications so the navbar badge doesn't show while user is on chat
+      parseClient.Cloud.run("clearNotifications").catch(() => {});
     }
     prevHistoryRef.current = currentReplies;
 
