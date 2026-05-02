@@ -64,16 +64,6 @@ export default function BagSidebar({
                     <p className="font-bold text-base text-gray-900 leading-tight">
                       {item.product.get("name")}
                     </p>
-                    <div className="flex flex-wrap gap-1 mt-1">
-                      {item.allocations?.map((alloc: any, idx: number) => (
-                        <span
-                          key={idx}
-                          className="text-[7px] font-black uppercase px-1.5 py-0.5 bg-blue-50 text-blue-600 rounded-md tracking-widest"
-                        >
-                          {alloc.city} x{alloc.qty}
-                        </span>
-                      ))}
-                    </div>
                   </div>
                   <div className="flex flex-col items-end gap-1">
                     <p className="font-bold text-blue-600 text-sm">
@@ -95,7 +85,7 @@ export default function BagSidebar({
                   >
                     -
                   </button>
-                  <span className="text-[10px] font-black w-4 text-center">
+                  <span className="text-[10px] font-black w-4 text-center text-gray-900">
                     {item.qty}
                   </span>
                   <button

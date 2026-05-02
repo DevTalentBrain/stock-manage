@@ -90,10 +90,27 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
           (p) => p.id === storedItem.productId,
         );
         if (product) {
+          // Basic sanity: ensure qty is a positive number
+          const safeQty =
+            typeof storedItem.qty === "number" && storedItem.qty > 0
+              ? storedItem.qty
+              : 1;
+          // Ensure allocations is an array
+          const safeAllocations = Array.isArray(storedItem.allocations)
+            ? storedItem.allocations.filter(
+                (a: any) =>
+                  a &&
+                  typeof a.qty === "number" &&
+                  a.qty > 0 &&
+                  a.city &&
+                  a.cityId,
+              )
+            : [];
+
           restored.push({
             product,
-            qty: storedItem.qty,
-            allocations: storedItem.allocations,
+            qty: safeQty,
+            allocations: safeAllocations,
           });
         }
       }

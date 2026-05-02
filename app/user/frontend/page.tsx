@@ -142,10 +142,6 @@ function FrontendContent() {
 
   /** Open the quantity selector modal for a product */
   const openQtySelector = (product: any) => {
-    const remaining = getRemainingStock(product.id);
-    if (remaining <= 0) {
-      return alert("Stock unavailable at all cargo hubs.");
-    }
     setDesiredQty(1);
     setQtySelector({ product, isOpen: true });
   };
@@ -156,22 +152,13 @@ function FrontendContent() {
     if (!product) return;
 
     const productId = product.id;
-    const remaining = getRemainingStock(productId);
 
     if (desiredQty < 1) {
       return alert("Quantity must be at least 1.");
     }
-    if (desiredQty > remaining) {
-      return alert(
-        `Only ${remaining} unit(s) available. Please enter a lower quantity.`,
-      );
-    }
 
     // Distribute the desired quantity across available cities
     const allocations = distributeAcrossCities(productId, desiredQty);
-    if (allocations.length === 0) {
-      return alert("Stock unavailable at cargo hubs.");
-    }
 
     setCart((prev: any[]) => {
       const existing = prev.find((i: any) => i.product.id === productId);
@@ -200,71 +187,33 @@ function FrontendContent() {
     setQtySelector({ product: null, isOpen: false });
   };
 
-  /** Increase quantity in bag with stock validation */
+  /** Increase quantity in bag */
   const increaseInBag = (product: any, city: string) => {
     const productId = product.id;
-    const remaining = getRemainingStock(productId);
 
-    if (remaining <= 0) {
-      return alert(
-        `No more stock available. Only ${getTotalStock(productId)} unit(s) in total across all hubs.`,
-      );
-    }
-
-    // Find which city to allocate this extra unit to
+    // Try to allocate to the same city first
     const cityEntry = cities.find((c) => c.name === city);
-    if (!cityEntry) return;
-
-    const cityStock = getStockForCity(productId, cityEntry.id);
-    const existingEntry = cart.find((i: any) => i.product.id === productId);
-    const existingAllocForCity = existingEntry?.allocations.find(
-      (a: any) => a.cityId === cityEntry.id,
-    );
-    const currentlyAllocatedToCity = existingAllocForCity?.qty || 0;
-
-    if (currentlyAllocatedToCity >= cityStock) {
-      // Try to allocate to another city with remaining stock
-      const stocks = getStockForProduct(productId);
-      const nextAvailable = stocks.find((s: any) => {
-        const alloc = existingEntry?.allocations.find(
-          (a: any) => a.cityId === s.cityId,
-        );
-        const allocated = alloc?.qty || 0;
-        return s.stock - allocated > 0;
-      });
-      if (nextAvailable) {
-        setCart((prev: any[]) =>
-          prev.map((i: any) => {
-            if (i.product.id !== productId) return i;
-            const allocs = [...i.allocations];
-            const existing = allocs.find(
-              (a: any) => a.cityId === nextAvailable.cityId,
-            );
-            if (existing) {
-              existing.qty += 1;
-            } else {
-              allocs.push({
-                city: nextAvailable.cityName,
-                cityId: nextAvailable.cityId,
-                qty: 1,
-              });
-            }
-            return { ...i, qty: i.qty + 1, allocations: allocs };
-          }),
-        );
-        return;
-      }
-      return alert(
-        `No more stock available in ${city}. Only ${cityStock} unit(s) allocated to this hub.`,
+    if (cityEntry) {
+      setCart((prev: any[]) =>
+        prev.map((i: any) => {
+          if (i.product.id !== productId) return i;
+          const allocs = i.allocations.map((a: any) =>
+            a.cityId === cityEntry.id ? { ...a, qty: a.qty + 1 } : a,
+          );
+          return { ...i, qty: i.qty + 1, allocations: allocs };
+        }),
       );
+      return;
     }
 
+    // Fallback: add to first allocation
     setCart((prev: any[]) =>
       prev.map((i: any) => {
         if (i.product.id !== productId) return i;
-        const allocs = i.allocations.map((a: any) =>
-          a.cityId === cityEntry.id ? { ...a, qty: a.qty + 1 } : a,
-        );
+        const allocs = [...i.allocations];
+        if (allocs.length > 0) {
+          allocs[0] = { ...allocs[0], qty: allocs[0].qty + 1 };
+        }
         return { ...i, qty: i.qty + 1, allocations: allocs };
       }),
     );
@@ -280,12 +229,36 @@ function FrontendContent() {
     setCart((prev: any[]) => {
       const existing = prev.find((i: any) => i.product.id === productId);
       if (!existing) return prev;
+
+      // Safety: if qty is already 0 or negative, remove the item
+      if (existing.qty <= 0) {
+        return prev.filter((i: any) => i.product.id !== productId);
+      }
+
       if (existing.qty <= 1) {
         return prev.filter((i: any) => i.product.id !== productId);
       }
-      // Remove 1 from the last allocation
-      const allocs = [...existing.allocations];
+
+      // Safety: ensure allocations is a valid array
+      const allocs = Array.isArray(existing.allocations)
+        ? [...existing.allocations]
+        : [];
+
+      if (allocs.length === 0) {
+        // No allocations but has qty > 1 — just decrement qty
+        return prev.map((i: any) =>
+          i.product.id === productId ? { ...i, qty: i.qty - 1 } : i,
+        );
+      }
+
       const lastAlloc = allocs[allocs.length - 1];
+      if (!lastAlloc || typeof lastAlloc.qty !== "number") {
+        // Malformed allocation — just decrement qty
+        return prev.map((i: any) =>
+          i.product.id === productId ? { ...i, qty: i.qty - 1 } : i,
+        );
+      }
+
       if (lastAlloc.qty <= 1) {
         allocs.pop();
       } else {
@@ -524,14 +497,9 @@ function FrontendContent() {
 
                 <button
                   onClick={() => openQtySelector(p)}
-                  disabled={isOutOfStock}
-                  className={`mt-auto py-4 rounded-full font-black uppercase text-[9px] tracking-widest transition-all active:scale-95 ${
-                    isOutOfStock
-                      ? "bg-gray-200 text-gray-400 cursor-not-allowed"
-                      : "bg-black text-white hover:bg-indigo-600"
-                  }`}
+                  className="mt-auto py-4 rounded-full font-black uppercase text-[9px] tracking-widest transition-all active:scale-95 bg-black text-white hover:bg-indigo-600"
                 >
-                  {isOutOfStock ? "Out of Stock" : "Add to Bag"}
+                  Add to Bag
                 </button>
               </div>
             );
@@ -570,11 +538,7 @@ function FrontendContent() {
                 {desiredQty}
               </span>
               <button
-                onClick={() =>
-                  setDesiredQty((q) =>
-                    Math.min(getRemainingStock(qtySelector.product.id), q + 1),
-                  )
-                }
+                onClick={() => setDesiredQty((q) => q + 1)}
                 className="w-12 h-12 rounded-full bg-gray-100 font-black text-lg hover:bg-gray-200 transition-all active:scale-90"
               >
                 +
