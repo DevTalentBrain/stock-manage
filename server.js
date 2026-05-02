@@ -53,9 +53,9 @@ const api = new ParseServer({
         classLevelPermissions: {
           find: { "*": true },
           get: { "*": true },
-          create: { "*": true },
-          update: { "*": true },
-          delete: { "*": true },
+          create: { "role:admin": true },
+          update: { "role:admin": true },
+          delete: { "role:admin": true },
         },
       },
       {
@@ -71,9 +71,9 @@ const api = new ParseServer({
         classLevelPermissions: {
           find: { "*": true },
           get: { "*": true },
-          create: { "*": true },
-          update: { "*": true },
-          delete: { "*": true },
+          create: { "role:admin": true },
+          update: { "role:admin": true },
+          delete: { "role:admin": true },
         },
       },
       {
@@ -86,9 +86,9 @@ const api = new ParseServer({
         classLevelPermissions: {
           find: { "*": true },
           get: { "*": true },
-          create: { "*": true },
-          update: { "*": true },
-          delete: { "*": true },
+          create: { "role:admin": true },
+          update: { "role:admin": true },
+          delete: { "role:admin": true },
         },
       },
       {
@@ -107,11 +107,11 @@ const api = new ParseServer({
           cities: { type: "Array" },
         },
         classLevelPermissions: {
-          find: { "*": true },
-          get: { "*": true },
+          find: { "role:admin": true, "role:manager": true },
+          get: { "role:admin": true, "role:manager": true },
           create: { "*": true },
-          update: { "*": true },
-          delete: { "*": true },
+          update: { "role:admin": true, "role:manager": true },
+          delete: { "role:admin": true },
         },
       },
       {
@@ -130,11 +130,11 @@ const api = new ParseServer({
           arrivedAt: { type: "String" },
         },
         classLevelPermissions: {
-          find: { "*": true },
-          get: { "*": true },
-          create: { "*": true },
-          update: { "*": true },
-          delete: { "*": true },
+          find: { "role:admin": true, "role:manager": true },
+          get: { "role:admin": true, "role:manager": true },
+          create: { "role:admin": true, "role:manager": true },
+          update: { "role:admin": true, "role:manager": true },
+          delete: { "role:admin": true },
         },
       },
       {
@@ -153,11 +153,11 @@ const api = new ParseServer({
           arrivedAt: { type: "String" },
         },
         classLevelPermissions: {
-          find: { "*": true },
-          get: { "*": true },
-          create: { "*": true },
-          update: { "*": true },
-          delete: { "*": true },
+          find: { "role:admin": true, "role:manager": true },
+          get: { "role:admin": true, "role:manager": true },
+          create: { "role:admin": true, "role:manager": true },
+          update: { "role:admin": true, "role:manager": true },
+          delete: { "role:admin": true },
         },
       },
     ],
