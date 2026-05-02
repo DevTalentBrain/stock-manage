@@ -3,16 +3,23 @@ import { useEffect, useState } from "react";
 import parseClient from "@/lib/parse-client";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { useCities, CityProvider } from "@/lib/city-context";
 
-interface OwnerStats {
-  realRevenue: number;
-  realProfit: number;
-  assetValue: number;
-  orders: any[];
-  loading: boolean;
-}
+function BenefitContent() {
+  const {
+    loading: citiesLoading,
+    refreshStock,
+    getStockForProduct,
+  } = useCities();
 
-export default function PerfectOwnerPage() {
+  interface OwnerStats {
+    realRevenue: number;
+    realProfit: number;
+    assetValue: number;
+    orders: any[];
+    loading: boolean;
+  }
+
   const [stats, setStats] = useState<OwnerStats>({
     realRevenue: 0,
     realProfit: 0,
@@ -20,9 +27,11 @@ export default function PerfectOwnerPage() {
     orders: [],
     loading: true,
   });
+  const [monthlyData, setMonthlyData] = useState<any[]>([]);
+  const [yearlyData, setYearlyData] = useState<any[]>([]);
+  const [yearlyTotal, setYearlyTotal] = useState(0);
 
   const router = useRouter();
-  const REVENUE_GOAL = 50000; // Your Sales Target
 
   useEffect(() => {
     const fetchMasterData = async () => {
@@ -43,27 +52,85 @@ export default function PerfectOwnerPage() {
 
         let totalSales = 0;
         allOrders.forEach((o) => {
-          // 🚩 Fixed: Using "total" from your database screenshot
           totalSales += Number(o.get("total") || 0);
         });
 
         // Calculate 40% Estimated Profit Margin
         const estimatedProfit = totalSales * 0.4;
 
-        // B. Fetch Warehouse Asset Value
+        // B. Fetch Warehouse Asset Value from dynamic CityStock
+        await refreshStock();
         const Product = parseClient.Object.extend("Product");
         const pQuery = new parseClient.Query(Product);
         const pResults = await pQuery.find();
 
         let totalAssets = 0;
         pResults.forEach((p) => {
-          const stock =
-            Number(p.get("kaunas") || 0) + Number(p.get("vilnius") || 0);
+          const productId = p.id || "";
+          const stocks = getStockForProduct(productId);
+          const totalStock = stocks.reduce((sum, s) => sum + s.stock, 0);
           const unitPrice = Number(p.get("price") || 0);
-          totalAssets += stock * unitPrice;
+          totalAssets += totalStock * unitPrice;
         });
 
-        // C. Update State
+        // C. Build monthly/yearly chart data (same as admin dashboard)
+        const monthNames = [
+          "Jan",
+          "Feb",
+          "Mar",
+          "Apr",
+          "May",
+          "Jun",
+          "Jul",
+          "Aug",
+          "Sep",
+          "Oct",
+          "Nov",
+          "Dec",
+        ];
+        const monthlyMap: any = {};
+        const yearlyMap: any = {};
+        const currentYear = new Date().getFullYear();
+
+        allOrders.forEach((o) => {
+          const amount = Number(o.get("total")) || 0;
+          const date = new Date(o.get("createdAt"));
+          if (date.getFullYear() === currentYear) {
+            monthlyMap[monthNames[date.getMonth()]] =
+              (monthlyMap[monthNames[date.getMonth()]] || 0) + amount;
+          }
+          yearlyMap[date.getFullYear()] =
+            (yearlyMap[date.getFullYear()] || 0) + amount;
+        });
+
+        const mChart = [];
+        for (let i = 4; i >= 0; i--) {
+          const name = monthNames[(new Date().getMonth() - i + 12) % 12];
+          const val = monthlyMap[name] || 0;
+          mChart.push({
+            name,
+            val,
+            h: `${Math.min(Math.max((val / 10000) * 100, 10), 100)}%`,
+          });
+        }
+
+        const yChart = [];
+        for (let i = 4; i >= 0; i--) {
+          const label = (currentYear - i).toString();
+          const val = yearlyMap[label] || 0;
+          yChart.push({
+            name: label,
+            val,
+            h: `${Math.min(Math.max((val / 50000) * 100, 10), 100)}%`,
+          });
+        }
+
+        const yearlyRev = (Object.values(monthlyMap) as number[]).reduce(
+          (sum, v) => sum + v,
+          0,
+        );
+
+        // D. Update State
         setStats({
           realRevenue: totalSales,
           realProfit: estimatedProfit,
@@ -71,6 +138,9 @@ export default function PerfectOwnerPage() {
           orders: allOrders.slice(0, 5),
           loading: false,
         });
+        setMonthlyData(mChart);
+        setYearlyData(yChart);
+        setYearlyTotal(yearlyRev);
       } catch (err: any) {
         console.error("❌ Sync Error:", err);
         if (err.code === 209) {
@@ -82,12 +152,12 @@ export default function PerfectOwnerPage() {
     };
 
     fetchMasterData();
-  }, [router]);
+  }, [router, refreshStock, getStockForProduct]);
 
-  // Logic: Progress is based on Revenue vs Revenue Goal
+  // Logic: Progress is based on Revenue vs Total Inventory Value
   const goalPercentage =
-    stats.realRevenue > 0
-      ? Math.min((stats.realRevenue / REVENUE_GOAL) * 100, 100)
+    stats.assetValue > 0
+      ? Math.min((stats.realRevenue / stats.assetValue) * 100, 100)
       : 0;
 
   return (
@@ -140,7 +210,7 @@ export default function PerfectOwnerPage() {
               </h2>
             </div>
             <p className="text-[10px] text-gray-500 font-bold uppercase mt-6 tracking-tighter">
-              Warehouse Hub Assets
+              Warehouse Hub Assets (Dynamic)
             </p>
           </div>
         </div>
@@ -153,7 +223,7 @@ export default function PerfectOwnerPage() {
                 Sales Target Progress
               </h3>
               <p className="text-[10px] font-black text-emerald-600 uppercase tracking-widest mt-1">
-                Net Profit: €{stats.realProfit.toLocaleString()}
+                Estimated Profit: €{stats.realProfit.toLocaleString()}
               </p>
             </div>
             <span className="text-3xl font-black text-indigo-600">
@@ -173,8 +243,63 @@ export default function PerfectOwnerPage() {
               Current Sales: €{stats.realRevenue.toLocaleString()}
             </p>
             <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">
-              Target: €{REVENUE_GOAL.toLocaleString()}
+              Target: €{stats.assetValue.toLocaleString()}
             </p>
+          </div>
+        </div>
+
+        {/* --- CHARTS SECTION --- */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-12">
+          {/* Monthly Amount Chart */}
+          <div className="bg-white p-10 rounded-[3rem] shadow-sm border border-gray-100">
+            <h2 className="text-black text-xl font-black uppercase tracking-tight mb-8">
+              Monthly Amount
+            </h2>
+            <div className="h-64 w-full bg-[#f5f5f7] rounded-[2.5rem] flex items-end justify-around p-8 gap-3 border border-gray-50 relative overflow-hidden">
+              {monthlyData.map((data, i) => (
+                <div
+                  key={i}
+                  className="flex flex-col items-center flex-1 group h-full justify-end relative z-10"
+                >
+                  <div className="absolute -top-2 bg-[#1d1d1f] text-white text-[9px] font-black px-2 py-1 rounded-md opacity-0 group-hover:opacity-100 transition-all transform group-hover:-translate-y-2">
+                    €{data.val.toLocaleString()}
+                  </div>
+                  <div
+                    style={{ height: data.h }}
+                    className="w-full max-w-[40px] bg-gradient-to-t from-blue-700 to-blue-500 rounded-t-xl hover:to-blue-400 transition-all cursor-pointer shadow-lg shadow-blue-500/20"
+                  ></div>
+                  <span className="text-[10px] font-black text-gray-400 mt-4 uppercase tracking-tighter">
+                    {data.name}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Yearly Amount Chart */}
+          <div className="bg-white p-10 rounded-[3rem] shadow-sm border border-gray-100">
+            <h2 className="text-black text-xl font-black uppercase tracking-tight mb-8">
+              Yearly Amount
+            </h2>
+            <div className="h-64 w-full bg-[#f5f5f7] rounded-[2.5rem] flex items-end justify-around p-8 gap-3 border border-gray-50 relative overflow-hidden">
+              {yearlyData.map((data, i) => (
+                <div
+                  key={i}
+                  className="flex flex-col items-center flex-1 group h-full justify-end relative z-10"
+                >
+                  <div className="absolute -top-2 bg-[#1d1d1f] text-white text-[9px] font-black px-2 py-1 rounded-md opacity-0 group-hover:opacity-100 transition-all transform group-hover:-translate-y-2">
+                    €{data.val.toLocaleString()}
+                  </div>
+                  <div
+                    style={{ height: data.h }}
+                    className="w-full max-w-[40px] bg-emerald-500 rounded-t-xl hover:bg-emerald-400 transition-all cursor-pointer shadow-sm"
+                  ></div>
+                  <span className="text-[10px] font-black text-gray-400 mt-4 uppercase">
+                    {data.name}
+                  </span>
+                </div>
+              ))}
+            </div>
           </div>
         </div>
 
@@ -190,7 +315,7 @@ export default function PerfectOwnerPage() {
               </div>
             ) : (
               stats.orders.map((o) => {
-                const orderVal = Number(o.get("total") || 0); // Safe Math
+                const orderVal = Number(o.get("total") || 0);
                 return (
                   <div
                     key={o.id}
@@ -229,5 +354,13 @@ export default function PerfectOwnerPage() {
         </footer>
       </div>
     </main>
+  );
+}
+
+export default function BenefitPage() {
+  return (
+    <CityProvider>
+      <BenefitContent />
+    </CityProvider>
   );
 }
