@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import parseClient from "@/lib/parse-client";
-import { CityProvider, useCities } from "@/lib/city-context";
+import { useCities } from "@/lib/city-context";
 import { useCart } from "@/lib/cart-context";
 
 function FrontendContent() {
@@ -736,9 +736,5 @@ function FrontendContent() {
 }
 
 export default function Home() {
-  return (
-    <CityProvider>
-      <FrontendContent />
-    </CityProvider>
-  );
+  return <FrontendContent />;
 }

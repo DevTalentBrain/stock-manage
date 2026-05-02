@@ -1,5 +1,11 @@
 "use client";
-import React, { createContext, useContext, useEffect, useState } from "react";
+import React, {
+  createContext,
+  useContext,
+  useEffect,
+  useState,
+  useCallback,
+} from "react";
 import parseClient from "@/lib/parse-client";
 
 export interface City {
@@ -45,7 +51,7 @@ export function CityProvider({ children }: { children: React.ReactNode }) {
     Record<string, CityStock[]>
   >({});
 
-  const refreshCities = async () => {
+  const refreshCities = useCallback(async () => {
     try {
       const City = parseClient.Object.extend("City");
       const query = new parseClient.Query(City);
@@ -66,9 +72,9 @@ export function CityProvider({ children }: { children: React.ReactNode }) {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
-  const refreshStock = async (productId?: string) => {
+  const refreshStock = useCallback(async (productId?: string) => {
     try {
       const CityStock = parseClient.Object.extend("CityStock");
       const query = new parseClient.Query(CityStock);
@@ -108,7 +114,7 @@ export function CityProvider({ children }: { children: React.ReactNode }) {
       console.error("Error fetching stock:", error);
       return {};
     }
-  };
+  }, []);
 
   const getStockForProduct = (productId: string): CityStock[] => {
     return productStockMap[productId] || [];

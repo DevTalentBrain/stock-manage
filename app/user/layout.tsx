@@ -22,7 +22,8 @@ function UserLayoutContent({ children }: { children: React.ReactNode }) {
   // Refresh stock data on mount so bag sidebar works from any page
   useEffect(() => {
     refreshStock();
-  }, [refreshStock]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const handleLogout = () => {
     parseClient.User.logOut();
