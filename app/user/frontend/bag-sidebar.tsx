@@ -5,8 +5,8 @@ interface BagSidebarProps {
   isOpen: boolean;
   onClose: () => void;
   cart: any[];
-  onRemove: (id: string, city: string) => void;
-  onDecrease: (id: string, city: string) => void;
+  onRemove: (id: string) => void;
+  onDecrease: (id: string) => void;
   onIncrease: (product: any, city: string) => void;
   total: number;
   onCheckout: () => void;
@@ -64,16 +64,23 @@ export default function BagSidebar({
                     <p className="font-bold text-base text-gray-900 leading-tight">
                       {item.product.get("name")}
                     </p>
-                    <span className="text-[8px] font-black uppercase px-2 py-0.5 bg-blue-50 text-blue-600 rounded-md tracking-widest">
-                      {item.city}
-                    </span>
+                    <div className="flex flex-wrap gap-1 mt-1">
+                      {item.allocations?.map((alloc: any, idx: number) => (
+                        <span
+                          key={idx}
+                          className="text-[7px] font-black uppercase px-1.5 py-0.5 bg-blue-50 text-blue-600 rounded-md tracking-widest"
+                        >
+                          {alloc.city} x{alloc.qty}
+                        </span>
+                      ))}
+                    </div>
                   </div>
                   <div className="flex flex-col items-end gap-1">
                     <p className="font-bold text-blue-600 text-sm">
                       ${(item.product.get("price") * item.qty).toLocaleString()}
                     </p>
                     <button
-                      onClick={() => onRemove(item.product.id, item.city)}
+                      onClick={() => onRemove(item.product.id)}
                       className="text-[10px] text-gray-400 hover:text-red-500 font-bold uppercase tracking-tighter transition-colors"
                     >
                       Remove
@@ -83,7 +90,7 @@ export default function BagSidebar({
 
                 <div className="flex items-center gap-3 bg-gray-50 px-3 py-1 rounded-full w-fit mt-2">
                   <button
-                    onClick={() => onDecrease(item.product.id, item.city)}
+                    onClick={() => onDecrease(item.product.id)}
                     className="text-gray-400 hover:text-black font-bold px-1"
                   >
                     -
@@ -92,7 +99,12 @@ export default function BagSidebar({
                     {item.qty}
                   </span>
                   <button
-                    onClick={() => onIncrease(item.product, item.city)}
+                    onClick={() =>
+                      onIncrease(
+                        item.product,
+                        item.allocations?.[0]?.city || "",
+                      )
+                    }
                     className="text-gray-400 hover:text-black font-bold px-1"
                   >
                     +

@@ -1,23 +1,23 @@
 "use client";
 import { useEffect, useState } from "react";
 import parseClient from "@/lib/parse-client";
-import Navbar from "@/app/user/frontend/navbar";
-import BagSidebar from "@/app/user/frontend/bag-sidebar";
+import { CityProvider, useCities } from "@/lib/city-context";
+import { useCart } from "@/lib/cart-context";
 
-export default function Home() {
+function FrontendContent() {
   // --- APPLICATION STATES ---
-  const [products, setProducts] = useState<any[]>([]);
+  const [products, setLocalProducts] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [currentUser, setCurrentUser] = useState<any>(null);
-  const [cart, setCart] = useState<
-    { product: any; qty: number; city: string }[]
-  >([]);
+
+  // --- CART FROM CONTEXT ---
+  const { cart, setCart, setProducts, cartCount, cartTotal, clearCart } =
+    useCart();
 
   // --- 🚩 FILTER STATE ---
   const [activeCategory, setActiveCategory] = useState("All");
 
   // --- UI STATES ---
-  const [isBagOpen, setIsBagOpen] = useState(false);
   const [isPaying, setIsPaying] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [step, setStep] = useState(1); // 1: Details, 2: Payment, 3: Confirm
@@ -26,6 +26,17 @@ export default function Home() {
   const [shippingName, setShippingName] = useState("");
   const [shippingPhone, setShippingPhone] = useState("");
   const [deliveryAddress, setDeliveryAddress] = useState("");
+
+  // --- DYNAMIC CITIES & STOCK ---
+  const { cities, getStockForProduct, refreshStock, productStockMap } =
+    useCities();
+
+  // --- QUANTITY SELECTOR STATE ---
+  const [qtySelector, setQtySelector] = useState<{
+    product: any;
+    isOpen: boolean;
+  }>({ product: null, isOpen: false });
+  const [desiredQty, setDesiredQty] = useState(1);
 
   useEffect(() => {
     const initApp = async () => {
@@ -54,7 +65,11 @@ export default function Home() {
         .include("warehouse")
         .descending("createdAt");
       const results = await query.find();
+      setLocalProducts(results);
+      // Set products in cart context for cart restoration
       setProducts(results);
+      // Refresh stock for all products after fetching
+      await refreshStock();
     } catch (error) {
       console.error(error);
     } finally {
@@ -71,23 +86,216 @@ export default function Home() {
           return cat === activeCategory.toLowerCase();
         });
 
-  const addToBag = (product: any) => {
-    const kStock = product.get("kaunas") || 0;
-    const vStock = product.get("vilnius") || 0;
-    let assignedCity = kStock > 0 ? "Kaunas" : vStock > 0 ? "Vilnius" : "";
-    if (!assignedCity) return alert("Stock unavailable at cargo hubs.");
+  // --- DYNAMIC STOCK HELPERS ---
 
-    setCart((prev) => {
-      const exists = prev.find(
-        (i) => i.product.id === product.id && i.city === assignedCity,
+  /** Get total available stock across all cities for a product */
+  const getTotalStock = (productId: string): number => {
+    const stocks = getStockForProduct(productId);
+    return stocks.reduce((sum, s) => sum + s.stock, 0);
+  };
+
+  /** Get stock for a specific city for a product */
+  const getStockForCity = (productId: string, cityId: string): number => {
+    const stocks = getStockForProduct(productId);
+    const cityStock = stocks.find((s) => s.cityId === cityId);
+    return cityStock?.stock || 0;
+  };
+
+  /** Get total cart quantity for a product across all cities */
+  const getTotalCartQty = (productId: string): number => {
+    const entry = cart.find((i) => i.product.id === productId);
+    return entry ? entry.qty : 0;
+  };
+
+  /** Get remaining available stock (stock - already in cart) */
+  const getRemainingStock = (productId: string): number => {
+    return getTotalStock(productId) - getTotalCartQty(productId);
+  };
+
+  /**
+   * Distribute a desired quantity across available cities intelligently.
+   * Returns an array of { city, cityId, qty } allocations.
+   */
+  const distributeAcrossCities = (
+    productId: string,
+    desiredQty: number,
+  ): { city: string; cityId: string; qty: number }[] => {
+    const stocks = getStockForProduct(productId);
+    const allocations: { city: string; cityId: string; qty: number }[] = [];
+    let remainingToAllocate = desiredQty;
+
+    for (const stock of stocks) {
+      if (remainingToAllocate <= 0) break;
+      const available = stock.stock;
+      if (available <= 0) continue;
+      const take = Math.min(available, remainingToAllocate);
+      allocations.push({
+        city: stock.cityName,
+        cityId: stock.cityId,
+        qty: take,
+      });
+      remainingToAllocate -= take;
+    }
+
+    return allocations;
+  };
+
+  /** Open the quantity selector modal for a product */
+  const openQtySelector = (product: any) => {
+    const remaining = getRemainingStock(product.id);
+    if (remaining <= 0) {
+      return alert("Stock unavailable at all cargo hubs.");
+    }
+    setDesiredQty(1);
+    setQtySelector({ product, isOpen: true });
+  };
+
+  /** Confirm adding the selected quantity to bag */
+  const confirmAddToBag = () => {
+    const product = qtySelector.product;
+    if (!product) return;
+
+    const productId = product.id;
+    const remaining = getRemainingStock(productId);
+
+    if (desiredQty < 1) {
+      return alert("Quantity must be at least 1.");
+    }
+    if (desiredQty > remaining) {
+      return alert(
+        `Only ${remaining} unit(s) available. Please enter a lower quantity.`,
       );
-      if (exists)
-        return prev.map((i) =>
-          i.product.id === product.id && i.city === assignedCity
-            ? { ...i, qty: i.qty + 1 }
+    }
+
+    // Distribute the desired quantity across available cities
+    const allocations = distributeAcrossCities(productId, desiredQty);
+    if (allocations.length === 0) {
+      return alert("Stock unavailable at cargo hubs.");
+    }
+
+    setCart((prev: any[]) => {
+      const existing = prev.find((i: any) => i.product.id === productId);
+      if (existing) {
+        // Merge allocations with existing
+        const mergedAllocations = [...existing.allocations];
+        for (const newAlloc of allocations) {
+          const existingAlloc = mergedAllocations.find(
+            (a: any) => a.cityId === newAlloc.cityId,
+          );
+          if (existingAlloc) {
+            existingAlloc.qty += newAlloc.qty;
+          } else {
+            mergedAllocations.push({ ...newAlloc });
+          }
+        }
+        return prev.map((i: any) =>
+          i.product.id === productId
+            ? { ...i, qty: i.qty + desiredQty, allocations: mergedAllocations }
             : i,
         );
-      return [...prev, { product, qty: 1, city: assignedCity }];
+      }
+      return [...prev, { product, qty: desiredQty, allocations }];
+    });
+
+    setQtySelector({ product: null, isOpen: false });
+  };
+
+  /** Increase quantity in bag with stock validation */
+  const increaseInBag = (product: any, city: string) => {
+    const productId = product.id;
+    const remaining = getRemainingStock(productId);
+
+    if (remaining <= 0) {
+      return alert(
+        `No more stock available. Only ${getTotalStock(productId)} unit(s) in total across all hubs.`,
+      );
+    }
+
+    // Find which city to allocate this extra unit to
+    const cityEntry = cities.find((c) => c.name === city);
+    if (!cityEntry) return;
+
+    const cityStock = getStockForCity(productId, cityEntry.id);
+    const existingEntry = cart.find((i: any) => i.product.id === productId);
+    const existingAllocForCity = existingEntry?.allocations.find(
+      (a: any) => a.cityId === cityEntry.id,
+    );
+    const currentlyAllocatedToCity = existingAllocForCity?.qty || 0;
+
+    if (currentlyAllocatedToCity >= cityStock) {
+      // Try to allocate to another city with remaining stock
+      const stocks = getStockForProduct(productId);
+      const nextAvailable = stocks.find((s: any) => {
+        const alloc = existingEntry?.allocations.find(
+          (a: any) => a.cityId === s.cityId,
+        );
+        const allocated = alloc?.qty || 0;
+        return s.stock - allocated > 0;
+      });
+      if (nextAvailable) {
+        setCart((prev: any[]) =>
+          prev.map((i: any) => {
+            if (i.product.id !== productId) return i;
+            const allocs = [...i.allocations];
+            const existing = allocs.find(
+              (a: any) => a.cityId === nextAvailable.cityId,
+            );
+            if (existing) {
+              existing.qty += 1;
+            } else {
+              allocs.push({
+                city: nextAvailable.cityName,
+                cityId: nextAvailable.cityId,
+                qty: 1,
+              });
+            }
+            return { ...i, qty: i.qty + 1, allocations: allocs };
+          }),
+        );
+        return;
+      }
+      return alert(
+        `No more stock available in ${city}. Only ${cityStock} unit(s) allocated to this hub.`,
+      );
+    }
+
+    setCart((prev: any[]) =>
+      prev.map((i: any) => {
+        if (i.product.id !== productId) return i;
+        const allocs = i.allocations.map((a: any) =>
+          a.cityId === cityEntry.id ? { ...a, qty: a.qty + 1 } : a,
+        );
+        return { ...i, qty: i.qty + 1, allocations: allocs };
+      }),
+    );
+  };
+
+  const removeFromBag = (productId: string) => {
+    setCart((prev: any[]) =>
+      prev.filter((i: any) => i.product.id !== productId),
+    );
+  };
+
+  const decreaseInBag = (productId: string) => {
+    setCart((prev: any[]) => {
+      const existing = prev.find((i: any) => i.product.id === productId);
+      if (!existing) return prev;
+      if (existing.qty <= 1) {
+        return prev.filter((i: any) => i.product.id !== productId);
+      }
+      // Remove 1 from the last allocation
+      const allocs = [...existing.allocations];
+      const lastAlloc = allocs[allocs.length - 1];
+      if (lastAlloc.qty <= 1) {
+        allocs.pop();
+      } else {
+        lastAlloc.qty -= 1;
+      }
+      return prev.map((i: any) =>
+        i.product.id === productId
+          ? { ...i, qty: i.qty - 1, allocations: allocs }
+          : i,
+      );
     });
   };
 
@@ -96,15 +304,18 @@ export default function Home() {
       if (!currentUser || !currentUser.id) return alert("Session required.");
       setIsProcessing(true);
 
-      const totalQty = cart.reduce((sum, item) => sum + item.qty, 0);
+      const totalQty = cart.reduce(
+        (sum: number, item: any) => sum + item.qty,
+        0,
+      );
       const totalAmount = cart.reduce(
-        (sum, i) => sum + (i.product.get("price") || 0) * i.qty,
+        (sum: number, i: any) => sum + (i.product.get("price") || 0) * i.qty,
         0,
       );
 
       // 1. GENERATE SUMMARY (Mapping from the current cart)
       const summary = cart
-        .map((item) => {
+        .map((item: any) => {
           const name = item.product.get("name") || "Unknown Item";
           return `${name} x${item.qty}`;
         })
@@ -112,7 +323,7 @@ export default function Home() {
 
       // 2. GENERATE IMAGES
       const images = cart
-        .map((i) =>
+        .map((i: any) =>
           (i.product.get("itemImage") || i.product.get("image"))?.url(),
         )
         .filter(Boolean);
@@ -128,7 +339,11 @@ export default function Home() {
       acl.setPublicWriteAccess(true);
       acl.setWriteAccess(currentUser.id, true);
       order.setACL(acl);
-      const uniqueCities = Array.from(new Set(cart.map((item) => item.city)));
+      const uniqueCities = Array.from(
+        new Set(
+          cart.flatMap((item: any) => item.allocations.map((a: any) => a.city)),
+        ),
+      );
       // Standard Fields
       order.set("recipientName", shippingName);
       order.set("phone", shippingPhone);
@@ -150,12 +365,10 @@ export default function Home() {
       let detectedOrigin = "Kaunas Hub"; // Default fallback
 
       if (firstItem) {
-        const stockInVilnius = Number(firstItem.get("vilnius") || 0);
-        const stockInKaunas = Number(firstItem.get("kaunas") || 0);
-
-        // If there is more stock in Vilnius, set it as the origin
-        if (stockInVilnius > stockInKaunas) {
-          detectedOrigin = "Vilnius";
+        // Use the first cart item's first allocation city as the origin
+        const firstAlloc = cart[0]?.allocations[0];
+        if (firstAlloc) {
+          detectedOrigin = `${firstAlloc.city} Hub`;
         }
       }
 
@@ -177,32 +390,43 @@ export default function Home() {
 
       await delivery.save();
 
-      // 4. STOCK SYNC
-      // ... (rest of your code above is good)
-
-      // 4. STOCK SYNC
+      // 4. STOCK SYNC - Use CityStock class instead of flat product fields
       for (const item of cart) {
-        try {
-          const product = item.product;
-          const cityKey = item.city.toLowerCase(); // 'kaunas' or 'vilnius'
+        for (const alloc of item.allocations) {
+          try {
+            const product = item.product;
+            const cityId = alloc.cityId;
 
-          const currentStock = Number(product.get(cityKey) || 0);
-          product.set(cityKey, Math.max(0, currentStock - item.qty));
+            // Find the CityStock entry for this product + city
+            const CityStock = parseClient.Object.extend("CityStock");
+            const ProductRef = parseClient.Object.extend("Product");
+            const CityRef = parseClient.Object.extend("City");
 
-          // 🚩 This is where Error 101 usually happens if CLP isn't 'Public'
-          await product.save();
-        } catch (err) {
-          console.warn(
-            "Stock update failed (check Product CLP permissions):",
-            err,
-          );
-          // We don't 'throw' here so the checkout can still finish
+            const productPtr = ProductRef.createWithoutData(product.id);
+            const cityPtr = CityRef.createWithoutData(cityId);
+
+            const query = new parseClient.Query(CityStock);
+            query.equalTo("product", productPtr);
+            query.equalTo("city", cityPtr);
+            const stockEntry = await query.first();
+
+            if (stockEntry) {
+              const currentStock = stockEntry.get("stock") || 0;
+              stockEntry.set("stock", Math.max(0, currentStock - alloc.qty));
+              await stockEntry.save();
+            }
+          } catch (err) {
+            console.warn(
+              "Stock update failed (check CityStock CLP permissions):",
+              err,
+            );
+          }
         }
       }
 
       // 🚩 MOVE THESE ABOVE THE ALERT
       // This ensures the Modal/UI closes immediately even if the alert box stays open
-      setCart([]);
+      clearCart();
       setIsPaying(false);
       setStep(1);
 
@@ -218,11 +442,6 @@ export default function Home() {
     }
   };
 
-  const cartCount = cart.reduce((sum, item) => sum + item.qty, 0);
-  const cartTotal = cart.reduce(
-    (sum, i) => sum + (i.product.get("price") || 0) * i.qty,
-    0,
-  );
   const isManifestInvalid =
     !shippingName ||
     !shippingPhone ||
@@ -233,25 +452,8 @@ export default function Home() {
 
   return (
     <main className="min-h-screen bg-[#f5f5f7] text-[#1d1d1f] font-sans antialiased pb-20">
-      <Navbar
-        cartCount={cartCount}
-        onOpenBag={() => setIsBagOpen(true)}
-        user={currentUser}
-        onLogout={() => setCurrentUser(null)}
-      />
-      <BagSidebar
-        isOpen={isBagOpen}
-        onClose={() => setIsBagOpen(false)}
-        cart={cart}
-        onRemove={() => {}}
-        onDecrease={() => {}}
-        onIncrease={addToBag}
-        total={cartTotal}
-        onCheckout={() => setIsPaying(true)}
-      />
-
       <section className="bg-black text-white py-20 px-6 text-center">
-        <h1 className="text-5xl font-black tracking-tighter mb-4 italic text-white">
+        <h1 className="text-4xl font-black tracking-tighter mb-4 italic text-white">
           PRODUCT REGISTRY
         </h1>
         <p className="text-gray-400 font-bold uppercase text-[10px] tracking-[0.4em]">
@@ -271,7 +473,8 @@ export default function Home() {
                 : "bg-gray-50 text-gray-400 hover:bg-gray-100 border border-transparent"
             }`}
           >
-            {cat}s
+            {cat}
+            {cat !== "All" && `s`}
           </button>
         ))}
       </div>
@@ -279,29 +482,60 @@ export default function Home() {
       {/* --- PRODUCT GRID --- */}
       <div className="max-w-7xl mx-auto px-6 py-12 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-8">
         {filteredProducts.length > 0 ? (
-          filteredProducts.map((p) => (
-            <div
-              key={p.id}
-              className="bg-white rounded-[2.5rem] p-8 border border-gray-100 shadow-sm hover:shadow-xl transition-all flex flex-col group"
-            >
-              <div className="h-40 mb-6 flex items-center justify-center bg-[#fbfbfd] rounded-3xl">
-                <img
-                  src={(p.get("itemImage") || p.get("image"))?.url()}
-                  className="max-h-[80%] group-hover:scale-110 transition-transform duration-500"
-                />
-              </div>
-              <h3 className="font-black text-lg mb-1">{p.get("name")}</h3>
-              <p className="text-indigo-600 font-bold mb-6">
-                ${p.get("price").toLocaleString()}
-              </p>
-              <button
-                onClick={() => addToBag(p)}
-                className="mt-auto py-4 bg-black text-white rounded-full font-black uppercase text-[9px] tracking-widest hover:bg-indigo-600 transition-all active:scale-95"
+          filteredProducts.map((p) => {
+            const totalStock = getTotalStock(p.id);
+            const totalInCart = getTotalCartQty(p.id);
+            const remainingStock = totalStock - totalInCart;
+            const isOutOfStock = remainingStock <= 0;
+
+            return (
+              <div
+                key={p.id}
+                className="bg-white rounded-[2.5rem] p-8 border border-gray-100 shadow-sm hover:shadow-xl transition-all flex flex-col group"
               >
-                Add to Bag
-              </button>
-            </div>
-          ))
+                <div className="h-40 mb-6 flex items-center justify-center bg-[#fbfbfd] rounded-3xl">
+                  <img
+                    src={(p.get("itemImage") || p.get("image"))?.url()}
+                    className="max-h-[80%] group-hover:scale-110 transition-transform duration-500"
+                  />
+                </div>
+                <h3 className="font-black text-lg mb-1">{p.get("name")}</h3>
+                <p className="text-indigo-600 font-bold mb-2">
+                  ${p.get("price").toLocaleString()}
+                </p>
+
+                {/* --- STOCK AVAILABILITY --- */}
+                <div className="mb-4">
+                  <div className="flex items-center justify-between text-[10px] font-black uppercase tracking-wider">
+                    <span className="text-gray-800">Stock</span>
+                    <span
+                      className={
+                        remainingStock <= 0
+                          ? "text-red-500"
+                          : "text-emerald-600"
+                      }
+                    >
+                      {remainingStock > 0
+                        ? `${remainingStock} available`
+                        : "Out of stock"}
+                    </span>
+                  </div>
+                </div>
+
+                <button
+                  onClick={() => openQtySelector(p)}
+                  disabled={isOutOfStock}
+                  className={`mt-auto py-4 rounded-full font-black uppercase text-[9px] tracking-widest transition-all active:scale-95 ${
+                    isOutOfStock
+                      ? "bg-gray-200 text-gray-400 cursor-not-allowed"
+                      : "bg-black text-white hover:bg-indigo-600"
+                  }`}
+                >
+                  {isOutOfStock ? "Out of Stock" : "Add to Bag"}
+                </button>
+              </div>
+            );
+          })
         ) : (
           <div className="col-span-full py-20 text-center font-bold text-gray-300 uppercase text-[10px] tracking-[0.3em]">
             No inventory found in "{activeCategory}" category
@@ -309,7 +543,66 @@ export default function Home() {
         )}
       </div>
 
-      {/* --- 🚩 THE 3-STEP CARGO MODAL --- */}
+      {/* --- QUANTITY SELECTOR MODAL --- */}
+      {qtySelector.isOpen && qtySelector.product && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[200] flex items-center justify-center p-4">
+          <div className="bg-white w-full max-w-sm rounded-[2.5rem] p-8 shadow-2xl animate-in zoom-in duration-200">
+            <div className="text-center mb-6">
+              <h3 className="text-xl font-black uppercase tracking-tight mb-1">
+                Select Quantity
+              </h3>
+              <p className="text-gray-500 text-[10px] font-bold uppercase tracking-widest">
+                {qtySelector.product.get("name")}
+              </p>
+              <p className="text-indigo-600 font-black text-lg mt-2">
+                ${qtySelector.product.get("price").toLocaleString()}
+              </p>
+            </div>
+
+            <div className="flex items-center justify-center gap-6 mb-6">
+              <button
+                onClick={() => setDesiredQty((q) => Math.max(1, q - 1))}
+                className="w-12 h-12 rounded-full bg-gray-100 font-black text-lg hover:bg-gray-200 transition-all active:scale-90"
+              >
+                -
+              </button>
+              <span className="text-4xl font-black w-16 text-center">
+                {desiredQty}
+              </span>
+              <button
+                onClick={() =>
+                  setDesiredQty((q) =>
+                    Math.min(getRemainingStock(qtySelector.product.id), q + 1),
+                  )
+                }
+                className="w-12 h-12 rounded-full bg-gray-100 font-black text-lg hover:bg-gray-200 transition-all active:scale-90"
+              >
+                +
+              </button>
+            </div>
+
+            <p className="text-center text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-6">
+              {getRemainingStock(qtySelector.product.id)} available in stock
+            </p>
+
+            <div className="flex gap-4">
+              <button
+                onClick={() => setQtySelector({ product: null, isOpen: false })}
+                className="flex-1 py-4 bg-gray-100 rounded-full font-black uppercase text-[9px] tracking-widest hover:bg-gray-200 transition-all"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={confirmAddToBag}
+                className="flex-[2] py-4 bg-black text-white rounded-full font-black uppercase text-[9px] tracking-widest hover:bg-indigo-600 transition-all active:scale-95"
+              >
+                Add {desiredQty > 1 ? `${desiredQty} Items` : "to Bag"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* --- 🚩 THE 3-STEP CARGO MODAL --- */}
       {isPaying && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-xl z-[100] flex items-center justify-center p-4">
@@ -475,5 +768,13 @@ export default function Home() {
         </div>
       )}
     </main>
+  );
+}
+
+export default function Home() {
+  return (
+    <CityProvider>
+      <FrontendContent />
+    </CityProvider>
   );
 }

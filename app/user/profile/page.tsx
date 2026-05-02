@@ -2,7 +2,6 @@
 import { useEffect, useState } from "react";
 import parseClient from "@/lib/parse-client";
 import Link from "next/link";
-import Navbar from "@/app/user/frontend/navbar";
 
 export default function ProfilePage() {
   const [myOrders, setMyOrders] = useState<any[]>([]);
@@ -93,11 +92,6 @@ export default function ProfilePage() {
     }
   };
 
-  const handleLogout = async () => {
-    await parseClient.User.logOut();
-    window.location.href = "/";
-  };
-
   const totalSpent = myOrders.reduce(
     (sum, order) => sum + (order.get("total") || 0),
     0,
@@ -131,13 +125,6 @@ export default function ProfilePage() {
 
   return (
     <main className="min-h-screen bg-[#f5f5f7] antialiased">
-      <Navbar
-        cartCount={0}
-        user={user}
-        onOpenBag={() => {}}
-        onLogout={handleLogout}
-      />
-
       <div className="max-w-5xl mx-auto p-6 md:p-12 text-black">
         <header className="flex justify-between items-center mb-10 pl-2">
           <div>

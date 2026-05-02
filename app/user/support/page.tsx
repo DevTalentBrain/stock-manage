@@ -2,7 +2,6 @@
 import { useEffect, useState, useRef } from "react";
 import parseClient from "@/lib/parse-client";
 import Link from "next/link";
-import Navbar from "@/app/user/frontend/navbar";
 
 export default function UserSupport() {
   const [currentUser, setCurrentUser] = useState<any>(null);
@@ -144,13 +143,6 @@ export default function UserSupport() {
           </div>
         </div>
       )}
-
-      <Navbar
-        cartCount={0}
-        onOpenBag={() => {}}
-        user={currentUser}
-        onLogout={() => {}}
-      />
 
       <div className="max-w-6xl mx-auto p-6 md:p-12">
         <header className="mb-12 flex justify-between items-end">

@@ -1,7 +1,6 @@
 "use client";
 import { useEffect, useState, useRef } from "react";
 import parseClient from "@/lib/parse-client";
-import Navbar from "@/app/user/frontend/navbar";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 
@@ -43,16 +42,6 @@ export default function MainPage() {
 
   return (
     <main className="min-h-screen bg-white text-[#1d1d1f] font-sans antialiased">
-      <Navbar
-        cartCount={0}
-        user={user}
-        onOpenBag={() => {}}
-        onLogout={() => {
-          parseClient.User.logOut();
-          window.location.reload();
-        }}
-      />
-
       <section className="pt-10 pb-16 px-6 bg-white">
         <div className="max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Main Hero */}
@@ -76,7 +65,7 @@ export default function MainPage() {
                 Secure checkout with professional handling.
               </p>
               <button
-                onClick={() => router.push("/frontend")}
+                onClick={() => router.push("/user/frontend")}
                 className="bg-white text-black px-12 py-5 rounded-full font-black uppercase text-[11px] w-fit hover:bg-indigo-600 hover:text-white transition-all shadow-2xl active:scale-95"
               >
                 Browse Products
@@ -175,7 +164,7 @@ export default function MainPage() {
                   </p>
                 </div>
                 <button
-                  onClick={() => router.push("/frontend")}
+                  onClick={() => router.push("/user/frontend")}
                   className="bg-black text-white h-14 px-8 rounded-full font-black uppercase text-[10px] tracking-widest hover:bg-indigo-600 transition-all"
                 >
                   View Product
