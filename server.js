@@ -132,7 +132,7 @@ const api = new ParseServer({
         classLevelPermissions: {
           find: { "role:admin": true, "role:manager": true },
           get: { "role:admin": true, "role:manager": true },
-          create: { "role:admin": true, "role:manager": true },
+          create: { "*": true },
           update: { "role:admin": true, "role:manager": true },
           delete: { "role:admin": true },
         },
