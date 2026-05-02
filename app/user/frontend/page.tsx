@@ -11,21 +11,38 @@ function FrontendContent() {
   const [currentUser, setCurrentUser] = useState<any>(null);
 
   // --- CART FROM CONTEXT ---
-  const { cart, setCart, setProducts, cartCount, cartTotal, clearCart } =
-    useCart();
+  const {
+    cart,
+    setCart,
+    setProducts,
+    cartCount,
+    cartTotal,
+    clearCart,
+    isPaying,
+    setIsPaying,
+    step,
+    setStep,
+  } = useCart();
 
   // --- 🚩 FILTER STATE ---
   const [activeCategory, setActiveCategory] = useState("All");
 
   // --- UI STATES ---
-  const [isPaying, setIsPaying] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
-  const [step, setStep] = useState(1); // 1: Details, 2: Payment, 3: Confirm
 
   // --- CARGO MANIFEST STATES ---
   const [shippingName, setShippingName] = useState("");
   const [shippingPhone, setShippingPhone] = useState("");
   const [deliveryAddress, setDeliveryAddress] = useState("");
+
+  // --- PAYMENT CODE ---
+  const [paymentCode] = useState(
+    () =>
+      "CARGO-" +
+      Math.random().toString(36).substring(2, 6).toUpperCase() +
+      "-" +
+      Math.random().toString(36).substring(2, 6).toUpperCase(),
+  );
 
   // --- DYNAMIC CITIES & STOCK ---
   const { cities, getStockForProduct, refreshStock, productStockMap } =
@@ -415,13 +432,7 @@ function FrontendContent() {
     }
   };
 
-  const isManifestInvalid =
-    !shippingName ||
-    !shippingPhone ||
-    !deliveryAddress ||
-    cartCount < 5 ||
-    cartCount === 2 ||
-    cartCount === 3;
+  const isManifestInvalid = !shippingName || !shippingPhone || !deliveryAddress;
 
   return (
     <main className="min-h-screen bg-[#f5f5f7] text-[#1d1d1f] font-sans antialiased pb-20">
@@ -572,17 +583,17 @@ function FrontendContent() {
         <div className="fixed inset-0 bg-black/80 backdrop-blur-xl z-[100] flex items-center justify-center p-4">
           <div className="bg-white w-full max-w-xl rounded-[3.5rem] p-10 shadow-2xl relative overflow-hidden animate-in zoom-in duration-200">
             {/* STEPPER UI */}
-            <div className="flex justify-between items-center mb-10 px-4">
+            <div className="flex items-center mb-10 px-4">
               {[1, 2, 3].map((s) => (
-                <div key={s} className="flex items-center">
+                <div key={s} className="flex items-center flex-1">
                   <div
-                    className={`h-8 w-8 rounded-full flex items-center justify-center text-[10px] font-black border-2 transition-all ${step >= s ? "bg-indigo-600 border-indigo-600 text-white" : "border-gray-100 text-gray-300"}`}
+                    className={`h-8 w-8 rounded-full flex items-center justify-center text-[10px] font-black border-2 transition-all z-10 shrink-0 ${step >= s ? "bg-indigo-600 border-indigo-600 text-white" : "bg-white border-gray-100 text-gray-300"}`}
                   >
                     {s}
                   </div>
                   {s < 3 && (
                     <div
-                      className={`w-12 h-[2px] mx-2 ${step > s ? "bg-indigo-600" : "bg-gray-100"}`}
+                      className={`flex-1 h-[2px] mx-2 ${step > s ? "bg-indigo-600" : "bg-gray-100"}`}
                     />
                   )}
                 </div>
@@ -628,7 +639,7 @@ function FrontendContent() {
               </div>
             )}
 
-            {/* STEP 2: RE-INTRODUCED PAYMENT DESIGN */}
+            {/* STEP 2: PAYMENT INFO */}
             {step === 2 && (
               <div className="space-y-6">
                 <div className="mb-2">
@@ -640,24 +651,57 @@ function FrontendContent() {
                   </p>
                 </div>
 
-                {/* Virtual Card Preview */}
-
-                <div className="space-y-3">
-                  <input
-                    placeholder="Card Number"
-                    className="w-full px-6 py-4 bg-gray-50 rounded-2xl font-bold border border-gray-100 outline-none"
-                  />
-                  <div className="flex gap-4">
-                    <input
-                      placeholder="MM/YY"
-                      className="w-1/2 px-6 py-4 bg-gray-50 rounded-2xl font-bold border border-gray-100 outline-none"
-                    />
-                    <input
-                      placeholder="CVC"
-                      className="w-1/2 px-6 py-4 bg-gray-50 rounded-2xl font-bold border border-gray-100 outline-none"
-                    />
-                  </div>
+                {/* Payment Code */}
+                <div className="bg-gray-50 rounded-[2.5rem] p-8 border border-gray-100 text-center">
+                  <p className="text-[9px] font-black uppercase tracking-widest text-gray-400 mb-3">
+                    Your Payment Code
+                  </p>
+                  <p className="text-2xl font-black tracking-wider text-indigo-600 select-all">
+                    {paymentCode}
+                  </p>
                 </div>
+
+                {/* Bank / PayPal Details from City */}
+                {(() => {
+                  const activeCity = cities.find((c) => c.isActive);
+                  return (
+                    <div className="bg-gray-50 rounded-[2.5rem] p-8 border border-gray-100 space-y-4 text-[11px] font-bold">
+                      {activeCity?.bankDetails ? (
+                        <div>
+                          <p className="text-[9px] font-black uppercase tracking-widest text-gray-400 mb-2">
+                            Bank Transfer
+                          </p>
+                          {activeCity.bankDetails.split("\n").map((line, i) => (
+                            <p key={i}>{line}</p>
+                          ))}
+                        </div>
+                      ) : (
+                        <div>
+                          <p className="text-[9px] font-black uppercase tracking-widest text-gray-400 mb-2">
+                            Bank Transfer
+                          </p>
+                          <p className="text-gray-300 italic">
+                            No bank details set
+                          </p>
+                        </div>
+                      )}
+                      {activeCity?.paypalLink && (
+                        <div className="border-t border-gray-200 pt-4">
+                          <p className="text-[9px] font-black uppercase tracking-widest text-gray-400 mb-2">
+                            PayPal
+                          </p>
+                          <p>{activeCity.paypalLink}</p>
+                        </div>
+                      )}
+                      <div className="border-t border-gray-200 pt-4 text-gray-400 italic">
+                        <p>
+                          Use your Payment Code as reference when transferring.
+                        </p>
+                        <p>Payment will be confirmed by management.</p>
+                      </div>
+                    </div>
+                  );
+                })()}
 
                 <div className="flex gap-4">
                   <button
@@ -670,7 +714,7 @@ function FrontendContent() {
                     onClick={() => setStep(3)}
                     className="flex-[2] bg-black text-white py-5 rounded-full font-black uppercase text-[9px] tracking-widest hover:bg-indigo-600 transition-all"
                   >
-                    Apply Payment
+                    Continue to Dispatch
                   </button>
                 </div>
               </div>

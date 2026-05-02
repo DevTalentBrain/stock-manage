@@ -58,6 +58,8 @@ const api = new ParseServer({
           shortCode: { type: "String" },
           color: { type: "String" },
           isActive: { type: "Boolean" },
+          paypalLink: { type: "String" },
+          bankDetails: { type: "String" },
         },
         classLevelPermissions: {
           find: { "*": true },

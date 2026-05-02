@@ -14,6 +14,8 @@ export interface City {
   shortCode: string;
   color: string;
   isActive: boolean;
+  paypalLink: string;
+  bankDetails: string;
 }
 
 export interface CityStock {
@@ -65,6 +67,8 @@ export function CityProvider({ children }: { children: React.ReactNode }) {
           shortCode: c.get("shortCode"),
           color: c.get("color"),
           isActive: c.get("isActive"),
+          paypalLink: c.get("paypalLink") || "",
+          bankDetails: c.get("bankDetails") || "",
         })),
       );
     } catch (error) {

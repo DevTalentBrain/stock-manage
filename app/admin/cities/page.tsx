@@ -12,6 +12,8 @@ export default function CitiesManagement() {
   const [shortCode, setShortCode] = useState("");
   const [color, setColor] = useState("blue");
   const [isActive, setIsActive] = useState(true);
+  const [paypalLink, setPaypalLink] = useState("");
+  const [bankDetails, setBankDetails] = useState("");
   const [saving, setSaving] = useState(false);
 
   const colorOptions = [
@@ -49,6 +51,8 @@ export default function CitiesManagement() {
     setShortCode("");
     setColor("blue");
     setIsActive(true);
+    setPaypalLink("");
+    setBankDetails("");
   };
 
   const startEdit = (city: any) => {
@@ -57,6 +61,8 @@ export default function CitiesManagement() {
     setShortCode(city.get("shortCode"));
     setColor(city.get("color") || "blue");
     setIsActive(city.get("isActive") !== false);
+    setPaypalLink(city.get("paypalLink") || "");
+    setBankDetails(city.get("bankDetails") || "");
   };
 
   const handleSave = async () => {
@@ -78,6 +84,8 @@ export default function CitiesManagement() {
       city.set("shortCode", shortCode.toUpperCase());
       city.set("color", color);
       city.set("isActive", isActive);
+      city.set("paypalLink", paypalLink);
+      city.set("bankDetails", bankDetails);
 
       await city.save();
       alert(editId ? "✅ City updated!" : "✅ City created!");
@@ -212,6 +220,32 @@ export default function CitiesManagement() {
                   <label className="text-[10px] font-black uppercase tracking-widest text-gray-400">
                     Active
                   </label>
+                </div>
+
+                <div>
+                  <label className="text-[9px] uppercase font-black text-gray-500 mb-2 block tracking-widest">
+                    PayPal Link
+                  </label>
+                  <input
+                    type="text"
+                    value={paypalLink}
+                    onChange={(e) => setPaypalLink(e.target.value)}
+                    placeholder="e.g. paypal.me/cargogopay"
+                    className="w-full bg-white/5 rounded-xl p-3 outline-none focus:bg-white/10"
+                  />
+                </div>
+
+                <div>
+                  <label className="text-[9px] uppercase font-black text-gray-500 mb-2 block tracking-widest">
+                    Bank Details
+                  </label>
+                  <textarea
+                    value={bankDetails}
+                    onChange={(e) => setBankDetails(e.target.value)}
+                    placeholder="IBAN, SWIFT, Beneficiary, etc."
+                    rows={3}
+                    className="w-full bg-white/5 rounded-xl p-3 outline-none focus:bg-white/10 resize-none"
+                  />
                 </div>
 
                 <button

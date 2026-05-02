@@ -8,8 +8,17 @@ import parseClient from "@/lib/parse-client";
 import { useRouter } from "next/navigation";
 
 function UserLayoutContent({ children }: { children: React.ReactNode }) {
-  const { cart, cartCount, cartTotal, isBagOpen, openBag, closeBag, setCart } =
-    useCart();
+  const {
+    cart,
+    cartCount,
+    cartTotal,
+    isBagOpen,
+    openBag,
+    closeBag,
+    setCart,
+    setIsPaying,
+    setStep,
+  } = useCart();
   const { cities, getStockForProduct, refreshStock } = useCities();
   const router = useRouter();
   const [currentUser, setCurrentUser] = useState<any>(null);
@@ -126,7 +135,11 @@ function UserLayoutContent({ children }: { children: React.ReactNode }) {
         onDecrease={decreaseInBag}
         onIncrease={increaseInBag}
         total={cartTotal}
-        onCheckout={() => router.push("/user/frontend")}
+        onCheckout={() => {
+          closeBag();
+          setStep(1);
+          setIsPaying(true);
+        }}
       />
       {children}
     </>

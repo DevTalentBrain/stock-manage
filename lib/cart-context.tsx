@@ -34,6 +34,10 @@ interface CartContextType {
   clearCart: () => void;
   setProducts: (products: any[]) => void;
   products: any[];
+  isPaying: boolean;
+  setIsPaying: (v: boolean) => void;
+  step: number;
+  setStep: (v: number) => void;
 }
 
 const CartContext = createContext<CartContextType>({
@@ -47,6 +51,10 @@ const CartContext = createContext<CartContextType>({
   clearCart: () => {},
   setProducts: () => {},
   products: [],
+  isPaying: false,
+  setIsPaying: () => {},
+  step: 1,
+  setStep: () => {},
 });
 
 export function CartProvider({ children }: { children: React.ReactNode }) {
@@ -54,6 +62,8 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
   const [isBagOpen, setIsBagOpen] = useState(false);
   const [products, setProducts] = useState<any[]>([]);
   const [cartReady, setCartReady] = useState(false);
+  const [isPaying, setIsPaying] = useState(false);
+  const [step, setStep] = useState(1);
   const initialRestoreDone = useRef(false);
 
   const cartCount = cart.reduce((sum, item) => sum + item.qty, 0);
@@ -161,6 +171,10 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
         clearCart,
         setProducts,
         products,
+        isPaying,
+        setIsPaying,
+        step,
+        setStep,
       }}
     >
       {children}
