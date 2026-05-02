@@ -163,12 +163,6 @@ export default function MainPage() {
                     ${p.get("price").toLocaleString()}
                   </p>
                 </div>
-                <button
-                  onClick={() => router.push("/user/frontend")}
-                  className="bg-black text-white h-14 px-8 rounded-full font-black uppercase text-[10px] tracking-widest hover:bg-indigo-600 transition-all"
-                >
-                  View Product
-                </button>
               </div>
             </div>
           ))}
