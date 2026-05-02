@@ -118,8 +118,8 @@ Parse.Cloud.beforeSave("InternalChat", async (request) => {
 
 /**
  * beforeSave hook for Deliveries:
- * - Only admin and manager can create/update
- * - Sets ACL for admin and manager roles
+ * - On create: gives read access to the order's customer, write access to admin/manager
+ * - On update: preserves existing ACL, ensures admin/manager roles are present
  */
 Parse.Cloud.beforeSave(tables.DELIVERIES, async (request) => {
   const { object, user, master } = request;
@@ -133,12 +133,43 @@ Parse.Cloud.beforeSave(tables.DELIVERIES, async (request) => {
     );
   }
 
-  const acl = new Parse.ACL();
-  acl.setRoleReadAccess(roles.ADMIN, true);
-  acl.setRoleWriteAccess(roles.ADMIN, true);
-  acl.setRoleReadAccess(roles.MANAGER, true);
-  acl.setRoleWriteAccess(roles.MANAGER, true);
-  object.setACL(acl);
+  if (!object.existed()) {
+    // New object: give the order's customer read access
+    const acl = new Parse.ACL();
+    acl.setRoleReadAccess(roles.ADMIN, true);
+    acl.setRoleWriteAccess(roles.ADMIN, true);
+    acl.setRoleReadAccess(roles.MANAGER, true);
+    acl.setRoleWriteAccess(roles.MANAGER, true);
+
+    // Look up the order to find the customer
+    const orderPtr = object.get("order");
+    if (orderPtr) {
+      try {
+        const Order = Parse.Object.extend(tables.ORDER);
+        const orderQuery = new Parse.Query(Order);
+        const order = await orderQuery.get(orderPtr.id, { useMasterKey: true });
+        const customer = order.get("user");
+        if (customer) {
+          acl.setReadAccess(customer.id, true);
+        }
+      } catch (e) {
+        // If order lookup fails, just proceed without customer access
+        console.warn("Could not look up order for Deliveries ACL:", e.message);
+      }
+    }
+
+    object.setACL(acl);
+  } else {
+    // Existing object: preserve the existing ACL, just ensure admin/manager roles are present
+    const existingAcl = object.getACL();
+    if (existingAcl) {
+      existingAcl.setRoleReadAccess(roles.ADMIN, true);
+      existingAcl.setRoleWriteAccess(roles.ADMIN, true);
+      existingAcl.setRoleReadAccess(roles.MANAGER, true);
+      existingAcl.setRoleWriteAccess(roles.MANAGER, true);
+      object.setACL(existingAcl);
+    }
+  }
 });
 
 /**
