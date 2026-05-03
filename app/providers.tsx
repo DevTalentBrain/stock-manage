@@ -2,12 +2,12 @@
 import { useEffect, useState } from "react";
 import { CartProvider, useCart } from "@/lib/cart-context";
 import { CityProvider, useCities } from "@/lib/city-context";
-import Navbar from "@/app/user/frontend/navbar";
-import BagSidebar from "@/app/user/frontend/bag-sidebar";
+import Navbar from "@/app/_components/navbar";
+import BagSidebar from "@/app/_components/bag-sidebar";
 import parseClient from "@/lib/parse-client";
-import { useRouter } from "next/navigation";
+import { useRouter, usePathname } from "next/navigation";
 
-function UserLayoutContent({ children }: { children: React.ReactNode }) {
+function AppContent({ children }: { children: React.ReactNode }) {
   const {
     cart,
     cartCount,
@@ -21,7 +21,12 @@ function UserLayoutContent({ children }: { children: React.ReactNode }) {
   } = useCart();
   const { cities, getStockForProduct, refreshStock } = useCities();
   const router = useRouter();
+  const pathname = usePathname();
   const [currentUser, setCurrentUser] = useState<any>(null);
+
+  // Only show the client navbar/bag on client-zone routes (not admin or management)
+  const isClientZone =
+    !pathname.startsWith("/admin") && !pathname.startsWith("/management");
 
   useEffect(() => {
     const user = parseClient.User.current();
@@ -34,8 +39,9 @@ function UserLayoutContent({ children }: { children: React.ReactNode }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const handleLogout = () => {
-    parseClient.User.logOut();
+  const handleLogout = async () => {
+    await parseClient.User.logOut();
+    setCurrentUser(null);
     router.push("/");
   };
 
@@ -121,40 +127,40 @@ function UserLayoutContent({ children }: { children: React.ReactNode }) {
 
   return (
     <>
-      <Navbar
-        cartCount={cartCount}
-        onOpenBag={openBag}
-        user={currentUser}
-        onLogout={handleLogout}
-      />
-      <BagSidebar
-        isOpen={isBagOpen}
-        onClose={closeBag}
-        cart={cart}
-        onRemove={removeFromBag}
-        onDecrease={decreaseInBag}
-        onIncrease={increaseInBag}
-        total={cartTotal}
-        onCheckout={() => {
-          closeBag();
-          setStep(1);
-          setIsPaying(true);
-        }}
-      />
+      {isClientZone && (
+        <>
+          <Navbar
+            cartCount={cartCount}
+            onOpenBag={openBag}
+            user={currentUser}
+            onLogout={handleLogout}
+          />
+          <BagSidebar
+            isOpen={isBagOpen}
+            onClose={closeBag}
+            cart={cart}
+            onRemove={removeFromBag}
+            onDecrease={decreaseInBag}
+            onIncrease={increaseInBag}
+            total={cartTotal}
+            onCheckout={() => {
+              closeBag();
+              setStep(1);
+              setIsPaying(true);
+            }}
+          />
+        </>
+      )}
       {children}
     </>
   );
 }
 
-export default function UserLayout({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
+export function Providers({ children }: { children: React.ReactNode }) {
   return (
     <CartProvider>
       <CityProvider>
-        <UserLayoutContent>{children}</UserLayoutContent>
+        <AppContent>{children}</AppContent>
       </CityProvider>
     </CartProvider>
   );

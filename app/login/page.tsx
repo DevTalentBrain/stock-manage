@@ -28,7 +28,7 @@ export default function Login() {
         return;
       }
 
-      window.location.href = "/user/frontend";
+      window.location.href = "/home";
     } catch (err: any) {
       setError("Invalid credentials.");
       setLoading(false); // Stop loading so they can try again
@@ -86,7 +86,7 @@ export default function Login() {
           <p className="text-sm text-gray-500 font-medium">
             Don't have an ID?{" "}
             <Link
-              href="/user/register"
+              href="/register"
               className="text-[#0066cc] hover:underline font-bold"
             >
               Create one now.

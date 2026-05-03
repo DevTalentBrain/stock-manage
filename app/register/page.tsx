@@ -139,7 +139,7 @@ export default function Register() {
 
         <div className="mt-10 text-center">
           <Link
-            href="/user/login"
+            href="/login"
             className="text-[10px] font-bold text-indigo-600 uppercase tracking-widest hover:underline"
           >
             Already registered? Login here.

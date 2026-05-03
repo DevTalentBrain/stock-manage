@@ -294,7 +294,7 @@ export default function UserSupport() {
                   Please authenticate to view your support inquiries.
                 </p>
                 <Link
-                  href="/user/login"
+                  href="/login"
                   className="bg-black text-white px-14 py-5 rounded-full text-[11px] font-black uppercase tracking-[0.2em] hover:scale-105 transition-all shadow-2xl"
                 >
                   Sign In to Hub

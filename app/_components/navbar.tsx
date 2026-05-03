@@ -57,19 +57,16 @@ export default function Navbar({
 
   // Auto-clear notifications when user is on a page where they can see updates
   useEffect(() => {
-    if (
-      user &&
-      (pathname === "/user/profile" || pathname === "/user/support")
-    ) {
+    if (user && (pathname === "/profile" || pathname === "/support")) {
       parseClient.Cloud.run("clearNotifications").catch(() => {});
       setNotifCount(0);
     }
   }, [user, pathname]);
 
   const navLinks = [
-    { name: "Home", href: "/user/home" },
-    { name: "Store", href: "/user/frontend" },
-    { name: "Support", href: "/user/support" },
+    { name: "Home", href: "/home" },
+    { name: "Store", href: "/" },
+    { name: "Support", href: "/support" },
   ];
 
   return (
@@ -141,7 +138,7 @@ export default function Navbar({
               <div className="flex items-center gap-3">
                 <div className="relative">
                   <Link
-                    href="/user/profile"
+                    href="/profile"
                     onClick={() => setNotifCount(0)}
                     className={`text-[10px] uppercase font-black px-2 py-1 rounded-md transition-all ${
                       pathname === "/profile"
@@ -181,13 +178,13 @@ export default function Navbar({
             ) : (
               <div className="flex items-center gap-4">
                 <Link
-                  href="/user/login"
+                  href="/login"
                   className="text-[11px] font-bold text-gray-300 hover:text-white"
                 >
                   Login
                 </Link>
                 <Link
-                  href="/user/register"
+                  href="/register"
                   className="text-[11px] font-bold bg-white text-black px-4 py-1.5 rounded-full hover:bg-gray-200 transition-all"
                 >
                   Sign Up

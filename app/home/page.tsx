@@ -65,7 +65,7 @@ export default function MainPage() {
                 Secure checkout with professional handling.
               </p>
               <button
-                onClick={() => router.push("/user/frontend")}
+                onClick={() => router.push("/")}
                 className="bg-white text-black px-12 py-5 rounded-full font-black uppercase text-[11px] w-fit hover:bg-indigo-600 hover:text-white transition-all shadow-2xl active:scale-95"
               >
                 Browse Products
